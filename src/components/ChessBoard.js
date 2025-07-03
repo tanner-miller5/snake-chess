@@ -27,9 +27,8 @@ const ChessBoard = () => {
 
         return initialBoard;
     }
-
     const checkRookPath = useCallback((fromRow, fromCol, toRow, toCol) => {
-        // For vertical movement
+        // Vertical movement
         if (fromCol === toCol) {
             const step = fromRow < toRow ? 1 : -1;
             for (let row = fromRow + step; row !== toRow; row += step) {
@@ -39,144 +38,154 @@ const ChessBoard = () => {
             }
             return true;
         }
-        
-        // For horizontal movement with wrapping
+
+        // Horizontal movement with wrapping
         if (fromRow === toRow) {
             const directDist = Math.abs(toCol - fromCol);
             const wrappedDist = 8 - directDist;
-            
-            // Check both potential paths (direct and wrapped)
-            // Direct path
-            let directBlocked = false;
+
+            // Try direct path
+            let isDirectPathClear = true;
+            let currentCol = fromCol;
             const directStep = toCol > fromCol ? 1 : -1;
-            let col = fromCol;
-            for (let i = 0; i < directDist; i++) {
-                col = (col + directStep + 8) % 8;
-                if (col !== toCol && board[fromRow][col] !== null) {
-                    directBlocked = true;
+
+            for (let i = 0; i < directDist - 1; i++) {
+                currentCol = (currentCol + directStep + 8) % 8;
+                if (board[fromRow][currentCol] !== null) {
+                    isDirectPathClear = false;
                     break;
                 }
             }
-        
-            // Wrapped path
-            let wrappedBlocked = false;
+
+            // Try wrapped path
+            let isWrappedPathClear = true;
+            currentCol = fromCol;
             const wrappedStep = toCol > fromCol ? -1 : 1;
-            col = fromCol;
-            for (let i = 0; i < wrappedDist; i++) {
-                col = (col + wrappedStep + 8) % 8;
-                if (col !== toCol && board[fromRow][col] !== null) {
-                    wrappedBlocked = true;
+
+            for (let i = 0; i < wrappedDist - 1; i++) {
+                currentCol = (currentCol + wrappedStep + 8) % 8;
+                if (board[fromRow][currentCol] !== null) {
+                    isWrappedPathClear = false;
                     break;
                 }
             }
-        
-            // If both paths are blocked, the move is invalid
-            if (directBlocked && wrappedBlocked) {
-                return false;
-            }
-        
-            // Choose the unblocked path if one exists
-            return !directBlocked || !wrappedBlocked;
+
+            return isDirectPathClear || isWrappedPathClear;
         }
-        
+
         return false;
     }, [board]);
 
-    const checkBishopPath = useCallback((fromRow, fromCol, toRow, toCol) => {
-        const rowStep = toRow > fromRow ? 1 : -1;
-        const directDist = Math.abs(toCol - fromCol);
-        const wrappedDist = 8 - directDist;
-        const useWrapping = wrappedDist < directDist;
-        
-        let colStep;
-        if (useWrapping) {
-            colStep = toCol > fromCol ? -1 : 1;
-        } else {
-            colStep = toCol > fromCol ? 1 : -1;
-        }
-        
-        let currentRow = fromRow + rowStep;
-        let currentCol = (fromCol + colStep + 8) % 8;
-        
-        while (currentRow !== toRow) {
-            if (board[currentRow][currentCol] !== null) {
-                return false;
-            }
+    const checkDiagonalPath = useCallback((fromRow, fromCol, toRow, toCol, rowStep, colStep, isWrapped) => {
+        let currentRow = fromRow;
+        let currentCol = fromCol;
+        const steps = Math.abs(toRow - fromRow);
+
+        for (let i = 0; i < steps; i++) {
             currentRow += rowStep;
             currentCol = (currentCol + colStep + 8) % 8;
+
+            if (i < steps - 1 && board[currentRow][currentCol] !== null) {
+                return false;
+            }
         }
-        
-        return true;
+
+        return currentRow === toRow && currentCol === toCol;
     }, [board]);
 
-    const isValidMove = useCallback((from, toRow, toCol) => {
-        const piece = board[from.row][from.col];
-        if (!piece || piece.color !== currentPlayer) return false;
-        
-        // Don't allow capturing own pieces
-        if (board[toRow][toCol] && board[toRow][toCol].color === piece.color) {
+const isValidMove = useCallback((from, toRow, toCol) => {
+    const piece = board[from.row][from.col];
+    if (!piece || piece.color !== currentPlayer) return false;
+    
+    if (board[toRow][toCol] && board[toRow][toCol].color === piece.color) {
+        return false;
+    }
+    
+    const rowDiff = Math.abs(toRow - from.row);
+    const directColDiff = Math.abs(toCol - from.col);
+    const wrappedColDiff = 8 - directColDiff;
+    const colDiff = Math.min(directColDiff, wrappedColDiff);
+    
+    switch (piece.piece) {
+        case 'pawn': {
+            const direction = piece.color === 'white' ? -1 : 1;
+            const startRow = piece.color === 'white' ? 6 : 1;
+            
+            // Normal forward move (1 square)
+            if (toCol === from.col && toRow === from.row + direction && !board[toRow][toCol]) {
+                return true;
+            }
+            
+            // Initial two-square move
+            if (from.row === startRow && toCol === from.col && 
+                toRow === from.row + (2 * direction) && 
+                !board[from.row + direction][from.col] && 
+                !board[toRow][toCol]) {
+                return true;
+            }
+            
+            // Capture moves (including wrapping)
+            if (toRow === from.row + direction && colDiff === 1 && board[toRow][toCol]) {
+                return true;
+            }
+            
             return false;
         }
         
-        const rowDiff = Math.abs(toRow - from.row);
-        const colDiff = Math.abs(toCol - from.col);
-        const wrappedColDiff = Math.min(colDiff, 8 - colDiff);
-        
-        switch (piece.piece) {
-            case 'rook': {
-                if (rowDiff === 0 || colDiff === 0) {
-                    return checkRookPath(from.row, from.col, toRow, toCol);
-                }
-                return false;
+        case 'rook': {
+            if (rowDiff === 0 || directColDiff === 0) {
+                return checkRookPath(from.row, from.col, toRow, toCol);
             }
-            case 'king': {
-                return rowDiff <= 1 && wrappedColDiff <= 1;
-            }
-            case 'queen': {
-                if (rowDiff === 0 || colDiff === 0) {
-                    return checkRookPath(from.row, from.col, toRow, toCol);
-                } else if (rowDiff === wrappedColDiff) {
-                    return checkBishopPath(from.row, from.col, toRow, toCol);
-                }
-                return false;
-            }
-            case 'bishop': {
-                if (rowDiff === wrappedColDiff) {
-                    return checkBishopPath(from.row, from.col, toRow, toCol);
-                }
-                return false;
-            }
-            case 'knight': {
-                return (rowDiff === 2 && wrappedColDiff === 1) || 
-                       (rowDiff === 1 && wrappedColDiff === 2);
-            }
-            case 'pawn': {
-                const direction = piece.color === 'white' ? -1 : 1;
-                const startRow = piece.color === 'white' ? 6 : 1;
-                
-                if (colDiff === 0) {
-                    if (toRow === from.row + direction && !board[toRow][toCol]) {
-                        return true;
-                    }
-                    if (from.row === startRow && 
-                        toRow === from.row + 2 * direction && 
-                        !board[from.row + direction][toCol] && 
-                        !board[toRow][toCol]) {
-                        return true;
-                    }
-                }
-                
-                if (wrappedColDiff === 1 && toRow === from.row + direction && 
-                    board[toRow][toCol] && 
-                    board[toRow][toCol].color !== piece.color) {
-                    return true;
-                }
-                return false;
-            }
-            default:
-                return false;
+            return false;
         }
-    }, [board, currentPlayer, checkRookPath, checkBishopPath]);
+        
+        case 'knight': {
+            return (rowDiff === 2 && colDiff === 1) || (rowDiff === 1 && colDiff === 2);
+        }
+        
+        case 'bishop': {
+            if (rowDiff === 0 || rowDiff > 7) return false;
+            
+            return (rowDiff === directColDiff || rowDiff === wrappedColDiff) && 
+                   checkDiagonalPath(from.row, from.col, toRow, toCol,
+                       toRow > from.row ? 1 : -1,
+                       rowDiff === directColDiff ? 
+                           (toCol > from.col ? 1 : -1) : 
+                           (toCol > from.col ? -1 : 1),
+                       rowDiff === wrappedColDiff);
+        }
+        
+        case 'queen': {
+            const isDiagonal = rowDiff === directColDiff || rowDiff === wrappedColDiff;
+            const isStraight = rowDiff === 0 || directColDiff === 0;
+            
+            if (rowDiff > 7) return false;
+            
+            if (isStraight) {
+                return checkRookPath(from.row, from.col, toRow, toCol);
+            }
+            if (isDiagonal) {
+                return checkDiagonalPath(from.row, from.col, toRow, toCol,
+                    toRow > from.row ? 1 : -1,
+                    rowDiff === directColDiff ? 
+                        (toCol > from.col ? 1 : -1) : 
+                        (toCol > from.col ? -1 : 1),
+                    rowDiff === wrappedColDiff);
+            }
+            return false;
+        }
+        
+        case 'king': {
+            return rowDiff <= 1 && colDiff <= 1;
+        }
+        
+        default:
+            return false;
+    }
+}, [board, currentPlayer, checkRookPath, checkDiagonalPath]);
+
+
+
 
     // Add function to calculate valid moves
     const calculateValidMoves = (row, col) => {
