@@ -7,9 +7,33 @@
     height: 100vh;
 }
 
-.status {
-    margin-bottom: 5px;
+.game-controls {
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.mode-switch {
+    padding: 10px 20px;
     font-size: 16px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.mode-switch:hover {
+    background-color: #45a049;
+}
+
+.status {
+    font-size: 18px;
+    font-weight: bold;
+    margin: 10px 0;
 }
 
 .chess-board {

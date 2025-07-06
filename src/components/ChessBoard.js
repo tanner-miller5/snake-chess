@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import './ChessBoard.css';
 import ChessPiece from './ChessPiece';
 
@@ -6,8 +6,8 @@ const ChessBoard = () => {
     const [board, setBoard] = useState(initializeBoard());
     const [selectedPiece, setSelectedPiece] = useState(null);
     const [currentPlayer, setCurrentPlayer] = useState('white');
-    const [rotation, setRotation] = useState(90);
     const [validMoves, setValidMoves] = useState([]);
+    const [isComputerMode, setIsComputerMode] = useState(false);
 
     function initializeBoard() {
         const initialBoard = Array(8).fill(null).map(() => Array(8).fill(null));
@@ -204,8 +204,55 @@ const isValidMove = useCallback((from, toRow, toCol) => {
         return moves;
     };
 
-    // Update handleSquareClick
+    // Add computer move logic
+    const makeComputerMove = useCallback(() => {
+        if (currentPlayer === 'black' && isComputerMode) {
+            // Simple AI: Find all possible moves for black pieces
+            let allPossibleMoves = [];
+            for (let row = 0; row < 8; row++) {
+                for (let col = 0; col < 8; col++) {
+                    if (board[row][col]?.color === 'black') {
+                        const moves = calculateValidMoves(row, col);
+                        moves.forEach(move => {
+                            allPossibleMoves.push({
+                                from: { row, col },
+                                to: move
+                            });
+                        });
+                    }
+                }
+            }
+
+            // Randomly select a move
+            if (allPossibleMoves.length > 0) {
+                const randomMove = allPossibleMoves[
+                    Math.floor(Math.random() * allPossibleMoves.length)
+                ];
+                
+                // Execute the move
+                const newBoard = board.map(row => [...row]);
+                newBoard[randomMove.to.row][randomMove.to.col] = 
+                    newBoard[randomMove.from.row][randomMove.from.col];
+                newBoard[randomMove.from.row][randomMove.from.col] = null;
+                setBoard(newBoard);
+                setCurrentPlayer('white');
+            }
+        }
+    }, [board, currentPlayer, isComputerMode, calculateValidMoves]);
+
+    // Add effect for computer moves
+    useEffect(() => {
+        if (isComputerMode && currentPlayer === 'black') {
+            const timer = setTimeout(makeComputerMove, 500); // 500ms delay for natural feel
+            return () => clearTimeout(timer);
+        }
+    }, [currentPlayer, isComputerMode, makeComputerMove]);
+
+    // Modify handleSquareClick to work with computer mode
     const handleSquareClick = (row, col) => {
+        // Only allow white moves in computer mode
+        if (isComputerMode && currentPlayer === 'black') return;
+
         if (selectedPiece) {
             if (isValidMove(selectedPiece, row, col)) {
                 const newBoard = board.map(row => [...row]);
@@ -215,22 +262,42 @@ const isValidMove = useCallback((from, toRow, toCol) => {
                 setCurrentPlayer(currentPlayer === 'white' ? 'black' : 'white');
             }
             setSelectedPiece(null);
-            setValidMoves([]); // Clear valid moves
+            setValidMoves([]);
         } else if (board[row][col] && board[row][col].color === currentPlayer) {
             setSelectedPiece({ row, col });
-            setValidMoves(calculateValidMoves(row, col)); // Calculate valid moves
+            setValidMoves(calculateValidMoves(row, col));
         }
     };
 
     const handleRotationChange = (e) => {
         const newRotation = Number(e.target.value);
-        setRotation(newRotation);
+    };
+
+    // Add mode switch handler
+    const toggleGameMode = () => {
+        setIsComputerMode(!isComputerMode);
+        // Reset the game when switching modes
+        setBoard(initializeBoard());
+        setSelectedPiece(null);
+        setValidMoves([]);
+        setCurrentPlayer('white');
     };
 
     // Update square rendering in the return statement
     return (
         <div className="chess-game">
-            <div className="status">Current Player: {currentPlayer}</div>
+            <div className="game-controls">
+                <button 
+                    className="mode-switch"
+                    onClick={toggleGameMode}
+                >
+                    {isComputerMode ? 'Switch to Two Players' : 'Switch to Computer Mode'}
+                </button>
+                <div className="status">
+                    Current Player: {currentPlayer}
+                    {isComputerMode && <span> ({currentPlayer === 'white' ? 'Your turn' : 'Computer thinking...'})</span>}
+                </div>
+            </div>
             <div className="chess-board">
                 {board.map((row, rowIndex) => (
                     <div key={rowIndex} className="board-row">
