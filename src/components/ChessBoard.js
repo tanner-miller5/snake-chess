@@ -9,6 +9,7 @@ const ChessBoard = () => {
     const [validMoves, setValidMoves] = useState([]);
     const [isComputerMode, setIsComputerMode] = useState(false);
     const [gameStatus, setGameStatus] = useState('playing'); // 'playing', 'check', 'checkmate', 'stalemate'
+    const [promotionState, setPromotionState] = useState(null); // { row, col, color } when promotion is needed
 
     function initializeBoard() {
         const initialBoard = Array(8).fill(null).map(() => Array(8).fill(null));
@@ -28,6 +29,33 @@ const ChessBoard = () => {
 
         return initialBoard;
     }
+
+    // Function to check if a pawn move results in promotion
+    const isPawnPromotion = (piece, fromRow, toRow) => {
+        if (piece.piece !== 'pawn') return false;
+        if (piece.color === 'white' && toRow === 0) return true;
+        if (piece.color === 'black' && toRow === 7) return true;
+        return false;
+    };
+
+    // Function to handle pawn promotion
+    const handlePawnPromotion = (row, col, promotionPiece) => {
+        const newBoard = board.map(row => [...row]);
+        newBoard[row][col] = { piece: promotionPiece, color: promotionState.color };
+        setBoard(newBoard);
+        setPromotionState(null);
+        
+        // Switch to next player and update game status
+        const nextPlayer = currentPlayer === 'white' ? 'black' : 'white';
+        setCurrentPlayer(nextPlayer);
+        updateGameStatus(newBoard, nextPlayer);
+    };
+
+    // Computer pawn promotion (always promote to queen for simplicity)
+    const handleComputerPromotion = (newBoard, row, col, color) => {
+        newBoard[row][col] = { piece: 'queen', color };
+        return newBoard;
+    };
 
     // Function to find the king's position for a given color
     const findKing = useCallback((board, color) => {
@@ -321,7 +349,7 @@ const ChessBoard = () => {
         return moves;
     }, [isValidMove, board]);
 
-    // Add computer move logic (updated to use legal moves)
+    // Updated computer move logic with pawn promotion
     const makeComputerMove = useCallback(() => {
         if (currentPlayer === 'black' && isComputerMode) {
             const allPossibleMoves = getAllLegalMoves(board, 'black');
@@ -333,7 +361,14 @@ const ChessBoard = () => {
                 ];
                 
                 // Execute the move
-                const newBoard = simulateMove(board, randomMove.from, randomMove.to);
+                let newBoard = simulateMove(board, randomMove.from, randomMove.to);
+                
+                // Check for pawn promotion
+                const movedPiece = board[randomMove.from.row][randomMove.from.col];
+                if (isPawnPromotion(movedPiece, randomMove.from.row, randomMove.to.row)) {
+                    newBoard = handleComputerPromotion(newBoard, randomMove.to.row, randomMove.to.col, 'black');
+                }
+                
                 setBoard(newBoard);
                 setCurrentPlayer('white');
                 
@@ -345,29 +380,37 @@ const ChessBoard = () => {
 
     // Add effect for computer moves
     useEffect(() => {
-        if (isComputerMode && currentPlayer === 'black') {
+        if (isComputerMode && currentPlayer === 'black' && !promotionState) {
             const timer = setTimeout(makeComputerMove, 500);
             return () => clearTimeout(timer);
         }
-    }, [currentPlayer, isComputerMode, makeComputerMove]);
+    }, [currentPlayer, isComputerMode, makeComputerMove, promotionState]);
 
-    // Modify handleSquareClick to work with computer mode and update game status
+    // Updated handleSquareClick with pawn promotion
     const handleSquareClick = useCallback((row, col) => {
-        // Don't allow moves if game is over
-        if (gameStatus === 'checkmate' || gameStatus === 'stalemate') return;
+        // Don't allow moves if game is over or if promotion is in progress
+        if (gameStatus === 'checkmate' || gameStatus === 'stalemate' || promotionState) return;
         
         // Only allow white moves in computer mode
         if (isComputerMode && currentPlayer === 'black') return;
 
         if (selectedPiece) {
             if (isValidMove(selectedPiece, row, col)) {
+                const piece = board[selectedPiece.row][selectedPiece.col];
                 const newBoard = simulateMove(board, selectedPiece, { row, col });
-                setBoard(newBoard);
-                const nextPlayer = currentPlayer === 'white' ? 'black' : 'white';
-                setCurrentPlayer(nextPlayer);
                 
-                // Update game status for the next player
-                updateGameStatus(newBoard, nextPlayer);
+                // Check for pawn promotion
+                if (isPawnPromotion(piece, selectedPiece.row, row)) {
+                    setBoard(newBoard);
+                    setPromotionState({ row, col, color: piece.color });
+                } else {
+                    setBoard(newBoard);
+                    const nextPlayer = currentPlayer === 'white' ? 'black' : 'white';
+                    setCurrentPlayer(nextPlayer);
+                    
+                    // Update game status for the next player
+                    updateGameStatus(newBoard, nextPlayer);
+                }
             }
             setSelectedPiece(null);
             setValidMoves([]);
@@ -375,10 +418,13 @@ const ChessBoard = () => {
             setSelectedPiece({ row, col });
             setValidMoves(calculateValidMoves(row, col));
         }
-    }, [gameStatus, isComputerMode, currentPlayer, selectedPiece, isValidMove, simulateMove, board, updateGameStatus, calculateValidMoves]);
+    }, [gameStatus, promotionState, isComputerMode, currentPlayer, selectedPiece, isValidMove, simulateMove, board, updateGameStatus, calculateValidMoves]);
 
     // Function to get status message
     const getStatusMessage = () => {
+        if (promotionState) {
+            return `Choose a piece to promote your pawn!`;
+        }
         switch (gameStatus) {
             case 'check':
                 return `${currentPlayer === 'white' ? 'White' : 'Black'} is in check!`;
@@ -398,6 +444,7 @@ const ChessBoard = () => {
         setCurrentPlayer('white');
         setValidMoves([]);
         setGameStatus('playing');
+        setPromotionState(null);
     };
 
     const isValidSquare = (row, col) => {
@@ -429,6 +476,46 @@ const ChessBoard = () => {
                     Play against computer
                 </label>
             </div>
+
+            {/* Pawn Promotion Modal */}
+            {promotionState && (
+                <div className="promotion-modal">
+                    <div className="promotion-content">
+                        <h3>Promote your pawn!</h3>
+                        <p>Choose which piece to promote to:</p>
+                        <div className="promotion-pieces">
+                            <button
+                                className="promotion-button"
+                                onClick={() => handlePawnPromotion(promotionState.row, promotionState.col, 'queen')}
+                            >
+                                <ChessPiece piece="queen" color={promotionState.color} />
+                                Queen
+                            </button>
+                            <button
+                                className="promotion-button"
+                                onClick={() => handlePawnPromotion(promotionState.row, promotionState.col, 'rook')}
+                            >
+                                <ChessPiece piece="rook" color={promotionState.color} />
+                                Rook
+                            </button>
+                            <button
+                                className="promotion-button"
+                                onClick={() => handlePawnPromotion(promotionState.row, promotionState.col, 'bishop')}
+                            >
+                                <ChessPiece piece="bishop" color={promotionState.color} />
+                                Bishop
+                            </button>
+                            <button
+                                className="promotion-button"
+                                onClick={() => handlePawnPromotion(promotionState.row, promotionState.col, 'knight')}
+                            >
+                                <ChessPiece piece="knight" color={promotionState.color} />
+                                Knight
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="chess-board">
                 {board.map((row, rowIndex) =>

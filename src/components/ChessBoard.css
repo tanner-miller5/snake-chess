@@ -47,6 +47,83 @@
     font-size: 16px;
 }
 
+/* Pawn Promotion Modal Styles */
+.promotion-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.promotion-content {
+    background-color: white;
+    padding: 30px;
+    border-radius: 15px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+    text-align: center;
+    max-width: 500px;
+    width: 90%;
+}
+
+.promotion-content h3 {
+    margin: 0 0 10px 0;
+    color: #333;
+    font-size: 1.8rem;
+}
+
+.promotion-content p {
+    margin: 0 0 20px 0;
+    color: #666;
+    font-size: 1.1rem;
+}
+
+.promotion-pieces {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.promotion-button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 15px 10px;
+    background-color: #f9f9f9;
+    border: 2px solid #ddd;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    min-width: 80px;
+    font-size: 14px;
+    font-weight: bold;
+    color: #333;
+}
+
+.promotion-button:hover {
+    background-color: #e8f5e8;
+    border-color: #4CAF50;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.promotion-button:active {
+    transform: translateY(0);
+}
+
+.promotion-button .chess-piece {
+    font-size: 40px;
+    margin-bottom: 5px;
+    height: auto;
+    width: auto;
+}
+
 .chess-board {
     display: grid;
     grid-template-columns: repeat(8, 70px);
@@ -127,6 +204,19 @@
 
 /* Responsive design */
 @media (max-width: 768px) {
+    .promotion-pieces {
+        gap: 10px;
+    }
+    
+    .promotion-button {
+        min-width: 70px;
+        padding: 12px 8px;
+    }
+    
+    .promotion-button .chess-piece {
+        font-size: 32px;
+    }
+    
     .chess-board {
         grid-template-columns: repeat(8, 50px);
         grid-template-rows: repeat(8, 50px);
@@ -148,6 +238,24 @@
 }
 
 @media (max-width: 480px) {
+    .promotion-content {
+        padding: 20px;
+    }
+    
+    .promotion-pieces {
+        gap: 8px;
+    }
+    
+    .promotion-button {
+        min-width: 60px;
+        padding: 10px 6px;
+        font-size: 12px;
+    }
+    
+    .promotion-button .chess-piece {
+        font-size: 28px;
+    }
+    
     .chess-board {
         grid-template-columns: repeat(8, 40px);
         grid-template-rows: repeat(8, 40px);
