@@ -123,7 +123,7 @@ const ChessBoard = () => {
         return false;
     };
 
-    const checkDiagonalPath = (gameBoard, fromRow, fromCol, toRow, toCol, rowStep, colStep, isWrapped) => {
+    const checkDiagonalPath = (gameBoard, fromRow, fromCol, toRow, toCol, rowStep, colStep) => {
         let currentRow = fromRow;
         let currentCol = fromCol;
         const steps = Math.abs(toRow - fromRow);
@@ -194,13 +194,13 @@ const ChessBoard = () => {
             case 'bishop': {
                 if (rowDiff === 0 || rowDiff > 7) return false;
                 
-                return (rowDiff === directColDiff || rowDiff === wrappedColDiff) && 
-                       checkDiagonalPath(gameBoard, from.row, from.col, toRow, toCol,
-                           toRow > from.row ? 1 : -1,
-                           rowDiff === directColDiff ? 
-                               (toCol > from.col ? 1 : -1) : 
-                               (toCol > from.col ? -1 : 1),
-                           rowDiff === wrappedColDiff);
+                return (rowDiff === directColDiff || rowDiff === wrappedColDiff) &&
+                    (checkDiagonalPath(gameBoard, from.row, from.col, toRow, toCol,
+                           toRow > from.row ? 1 : -1, 1)
+                        ||
+                        checkDiagonalPath(gameBoard, from.row, from.col, toRow, toCol,
+                            toRow > from.row ? 1 : -1, -1)
+                    );
             }
             
             case 'queen': {
@@ -213,12 +213,12 @@ const ChessBoard = () => {
                     return checkRookPath(gameBoard, from.row, from.col, toRow, toCol);
                 }
                 if (isDiagonal) {
-                    return checkDiagonalPath(gameBoard, from.row, from.col, toRow, toCol,
-                        toRow > from.row ? 1 : -1,
-                        rowDiff === directColDiff ? 
-                            (toCol > from.col ? 1 : -1) : 
-                            (toCol > from.col ? -1 : 1),
-                        rowDiff === wrappedColDiff);
+                    return (checkDiagonalPath(gameBoard, from.row, from.col, toRow, toCol,
+                            toRow > from.row ? 1 : -1, 1)
+                        ||
+                        checkDiagonalPath(gameBoard, from.row, from.col, toRow, toCol,
+                            toRow > from.row ? 1 : -1, -1)
+                    );
                 }
                 return false;
             }
@@ -379,13 +379,13 @@ const ChessBoard = () => {
             case 'bishop': {
                 if (rowDiff === 0 || rowDiff > 7) return false;
                 
-                return (rowDiff === directColDiff || rowDiff === wrappedColDiff) && 
-                       checkDiagonalPath(gameBoard, from.row, from.col, toRow, toCol,
-                           toRow > from.row ? 1 : -1,
-                           rowDiff === directColDiff ? 
-                               (toCol > from.col ? 1 : -1) : 
-                               (toCol > from.col ? -1 : 1),
-                           rowDiff === wrappedColDiff);
+                return (rowDiff === directColDiff || rowDiff === wrappedColDiff) &&
+                    (checkDiagonalPath(gameBoard, from.row, from.col, toRow, toCol,
+                            toRow > from.row ? 1 : -1, 1)
+                        ||
+                        checkDiagonalPath(gameBoard, from.row, from.col, toRow, toCol,
+                            toRow > from.row ? 1 : -1, -1)
+                    );
             }
             
             case 'queen': {
@@ -398,12 +398,12 @@ const ChessBoard = () => {
                     return checkRookPath(gameBoard, from.row, from.col, toRow, toCol);
                 }
                 if (isDiagonal) {
-                    return checkDiagonalPath(gameBoard, from.row, from.col, toRow, toCol,
-                        toRow > from.row ? 1 : -1,
-                        rowDiff === directColDiff ? 
-                            (toCol > from.col ? 1 : -1) : 
-                            (toCol > from.col ? -1 : 1),
-                        rowDiff === wrappedColDiff);
+                    return (checkDiagonalPath(gameBoard, from.row, from.col, toRow, toCol,
+                            toRow > from.row ? 1 : -1, 1)
+                        ||
+                        checkDiagonalPath(gameBoard, from.row, from.col, toRow, toCol,
+                            toRow > from.row ? 1 : -1, -1)
+                    );
                 }
                 return false;
             }
