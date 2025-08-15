@@ -8,6 +8,7 @@ const ChessBoard = () => {
     const [currentPlayer, setCurrentPlayer] = useState('white');
     const [validMoves, setValidMoves] = useState([]);
     const [isComputerMode, setIsComputerMode] = useState(false);
+    const [gameStatus, setGameStatus] = useState('playing'); // 'playing', 'check', 'checkmate', 'stalemate'
 
     function initializeBoard() {
         const initialBoard = Array(8).fill(null).map(() => Array(8).fill(null));
@@ -27,6 +28,19 @@ const ChessBoard = () => {
 
         return initialBoard;
     }
+
+    // Function to find the king's position for a given color
+    const findKing = useCallback((board, color) => {
+        for (let row = 0; row < 8; row++) {
+            for (let col = 0; col < 8; col++) {
+                if (board[row][col]?.piece === 'king' && board[row][col]?.color === color) {
+                    return { row, col };
+                }
+            }
+        }
+        return null;
+    }, []);
+
     const checkRookPath = useCallback((fromRow, fromCol, toRow, toCol) => {
         // Vertical movement
         if (fromCol === toCol) {
@@ -93,102 +107,205 @@ const ChessBoard = () => {
         return currentRow === toRow && currentCol === toCol;
     }, [board]);
 
-const isValidMove = useCallback((from, toRow, toCol) => {
-    const piece = board[from.row][from.col];
-    if (!piece || piece.color !== currentPlayer) return false;
-    
-    if (board[toRow][toCol] && board[toRow][toCol].color === piece.color) {
+    // Function to check if a move is valid (without considering check)
+    const isValidMoveBasic = useCallback((from, toRow, toCol, testBoard = null) => {
+        const gameBoard = testBoard || board;
+        const piece = gameBoard[from.row][from.col];
+        if (!piece) return false;
+        
+        if (gameBoard[toRow][toCol] && gameBoard[toRow][toCol].color === piece.color) {
+            return false;
+        }
+        
+        const rowDiff = Math.abs(toRow - from.row);
+        const directColDiff = Math.abs(toCol - from.col);
+        const wrappedColDiff = 8 - directColDiff;
+        const colDiff = Math.min(directColDiff, wrappedColDiff);
+        
+        switch (piece.piece) {
+            case 'pawn': {
+                const direction = piece.color === 'white' ? -1 : 1;
+                const startRow = piece.color === 'white' ? 6 : 1;
+                
+                // Normal forward move (1 square)
+                if (toCol === from.col && toRow === from.row + direction && !gameBoard[toRow][toCol]) {
+                    return true;
+                }
+                
+                // Initial two-square move
+                if (from.row === startRow && toCol === from.col && 
+                    toRow === from.row + (2 * direction) && 
+                    !gameBoard[from.row + direction][from.col] && 
+                    !gameBoard[toRow][toCol]) {
+                    return true;
+                }
+                
+                // Capture moves (including wrapping)
+                if (toRow === from.row + direction && colDiff === 1 && gameBoard[toRow][toCol]) {
+                    return true;
+                }
+                
+                return false;
+            }
+            
+            case 'rook': {
+                if (rowDiff === 0 || directColDiff === 0) {
+                    return checkRookPath(from.row, from.col, toRow, toCol);
+                }
+                return false;
+            }
+            
+            case 'knight': {
+                return (rowDiff === 2 && colDiff === 1) || (rowDiff === 1 && colDiff === 2);
+            }
+            
+            case 'bishop': {
+                if (rowDiff === 0 || rowDiff > 7) return false;
+                
+                return (rowDiff === directColDiff || rowDiff === wrappedColDiff) && 
+                       checkDiagonalPath(from.row, from.col, toRow, toCol,
+                           toRow > from.row ? 1 : -1,
+                           rowDiff === directColDiff ? 
+                               (toCol > from.col ? 1 : -1) : 
+                               (toCol > from.col ? -1 : 1),
+                           rowDiff === wrappedColDiff);
+            }
+            
+            case 'queen': {
+                const isDiagonal = rowDiff === directColDiff || rowDiff === wrappedColDiff;
+                const isStraight = rowDiff === 0 || directColDiff === 0;
+                
+                if (rowDiff > 7) return false;
+                
+                if (isStraight) {
+                    return checkRookPath(from.row, from.col, toRow, toCol);
+                }
+                if (isDiagonal) {
+                    return checkDiagonalPath(from.row, from.col, toRow, toCol,
+                        toRow > from.row ? 1 : -1,
+                        rowDiff === directColDiff ? 
+                            (toCol > from.col ? 1 : -1) : 
+                            (toCol > from.col ? -1 : 1),
+                        rowDiff === wrappedColDiff);
+                }
+                return false;
+            }
+            
+            case 'king': {
+                return rowDiff <= 1 && colDiff <= 1;
+            }
+            
+            default:
+                return false;
+        }
+    }, [board, checkRookPath, checkDiagonalPath]);
+
+    // Function to check if a square is under attack by the opponent
+    const isSquareUnderAttack = useCallback((gameBoard, targetRow, targetCol, attackingColor) => {
+        for (let row = 0; row < 8; row++) {
+            for (let col = 0; col < 8; col++) {
+                const piece = gameBoard[row][col];
+                if (piece && piece.color === attackingColor) {
+                    if (isValidMoveBasic({ row, col }, targetRow, targetCol, gameBoard)) {
+                        return true;
+                    }
+                }
+            }
+        }
         return false;
-    }
-    
-    const rowDiff = Math.abs(toRow - from.row);
-    const directColDiff = Math.abs(toCol - from.col);
-    const wrappedColDiff = 8 - directColDiff;
-    const colDiff = Math.min(directColDiff, wrappedColDiff);
-    
-    switch (piece.piece) {
-        case 'pawn': {
-            const direction = piece.color === 'white' ? -1 : 1;
-            const startRow = piece.color === 'white' ? 6 : 1;
-            
-            // Normal forward move (1 square)
-            if (toCol === from.col && toRow === from.row + direction && !board[toRow][toCol]) {
-                return true;
-            }
-            
-            // Initial two-square move
-            if (from.row === startRow && toCol === from.col && 
-                toRow === from.row + (2 * direction) && 
-                !board[from.row + direction][from.col] && 
-                !board[toRow][toCol]) {
-                return true;
-            }
-            
-            // Capture moves (including wrapping)
-            if (toRow === from.row + direction && colDiff === 1 && board[toRow][toCol]) {
-                return true;
-            }
-            
-            return false;
-        }
-        
-        case 'rook': {
-            if (rowDiff === 0 || directColDiff === 0) {
-                return checkRookPath(from.row, from.col, toRow, toCol);
-            }
-            return false;
-        }
-        
-        case 'knight': {
-            return (rowDiff === 2 && colDiff === 1) || (rowDiff === 1 && colDiff === 2);
-        }
-        
-        case 'bishop': {
-            if (rowDiff === 0 || rowDiff > 7) return false;
-            
-            return (rowDiff === directColDiff || rowDiff === wrappedColDiff) && 
-                   checkDiagonalPath(from.row, from.col, toRow, toCol,
-                       toRow > from.row ? 1 : -1,
-                       rowDiff === directColDiff ? 
-                           (toCol > from.col ? 1 : -1) : 
-                           (toCol > from.col ? -1 : 1),
-                       rowDiff === wrappedColDiff);
-        }
-        
-        case 'queen': {
-            const isDiagonal = rowDiff === directColDiff || rowDiff === wrappedColDiff;
-            const isStraight = rowDiff === 0 || directColDiff === 0;
-            
-            if (rowDiff > 7) return false;
-            
-            if (isStraight) {
-                return checkRookPath(from.row, from.col, toRow, toCol);
-            }
-            if (isDiagonal) {
-                return checkDiagonalPath(from.row, from.col, toRow, toCol,
-                    toRow > from.row ? 1 : -1,
-                    rowDiff === directColDiff ? 
-                        (toCol > from.col ? 1 : -1) : 
-                        (toCol > from.col ? -1 : 1),
-                    rowDiff === wrappedColDiff);
-            }
-            return false;
-        }
-        
-        case 'king': {
-            return rowDiff <= 1 && colDiff <= 1;
-        }
-        
-        default:
-            return false;
-    }
-}, [board, currentPlayer, checkRookPath, checkDiagonalPath]);
+    }, [isValidMoveBasic]);
 
+    // Function to check if the current player is in check
+    const isInCheck = useCallback((gameBoard, color) => {
+        const king = findKing(gameBoard, color);
+        if (!king) return false;
+        
+        const opponentColor = color === 'white' ? 'black' : 'white';
+        return isSquareUnderAttack(gameBoard, king.row, king.col, opponentColor);
+    }, [findKing, isSquareUnderAttack]);
 
+    // Function to simulate a move and return the resulting board
+    const simulateMove = useCallback((gameBoard, from, to) => {
+        const newBoard = gameBoard.map(row => [...row]);
+        newBoard[to.row][to.col] = newBoard[from.row][from.col];
+        newBoard[from.row][from.col] = null;
+        return newBoard;
+    }, []);
 
+    // Function to get all possible legal moves for a color
+    const getAllLegalMoves = useCallback((gameBoard, color) => {
+        const legalMoves = [];
+        
+        for (let row = 0; row < 8; row++) {
+            for (let col = 0; col < 8; col++) {
+                const piece = gameBoard[row][col];
+                if (piece && piece.color === color) {
+                    for (let toRow = 0; toRow < 8; toRow++) {
+                        for (let toCol = 0; toCol < 8; toCol++) {
+                            if (isValidMoveBasic({ row, col }, toRow, toCol, gameBoard)) {
+                                // Check if this move would leave the king in check
+                                const testBoard = simulateMove(gameBoard, { row, col }, { row: toRow, col: toCol });
+                                if (!isInCheck(testBoard, color)) {
+                                    legalMoves.push({
+                                        from: { row, col },
+                                        to: { row: toRow, col: toCol },
+                                        isCapture: gameBoard[toRow][toCol] !== null
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        return legalMoves;
+    }, [isValidMoveBasic, simulateMove, isInCheck]);
 
-    // Add function to calculate valid moves
-    const calculateValidMoves = (row, col) => {
+    // Function to check if the current player is in checkmate
+    const isCheckmate = useCallback((gameBoard, color) => {
+        if (!isInCheck(gameBoard, color)) return false;
+        
+        const legalMoves = getAllLegalMoves(gameBoard, color);
+        return legalMoves.length === 0;
+    }, [isInCheck, getAllLegalMoves]);
+
+    // Function to check if the current player is in stalemate
+    const isStalemate = useCallback((gameBoard, color) => {
+        if (isInCheck(gameBoard, color)) return false;
+        
+        const legalMoves = getAllLegalMoves(gameBoard, color);
+        return legalMoves.length === 0;
+    }, [isInCheck, getAllLegalMoves]);
+
+    // Updated isValidMove that considers check
+    const isValidMove = useCallback((from, toRow, toCol) => {
+        const piece = board[from.row][from.col];
+        if (!piece || piece.color !== currentPlayer) return false;
+        
+        // First check if the basic move is valid
+        if (!isValidMoveBasic(from, toRow, toCol)) return false;
+        
+        // Then check if this move would leave the king in check
+        const testBoard = simulateMove(board, from, { row: toRow, col: toCol });
+        return !isInCheck(testBoard, currentPlayer);
+    }, [board, currentPlayer, isValidMoveBasic, simulateMove, isInCheck]);
+
+    // Function to update game status
+    const updateGameStatus = useCallback((gameBoard, color) => {
+        if (isCheckmate(gameBoard, color)) {
+            setGameStatus('checkmate');
+        } else if (isStalemate(gameBoard, color)) {
+            setGameStatus('stalemate');
+        } else if (isInCheck(gameBoard, color)) {
+            setGameStatus('check');
+        } else {
+            setGameStatus('playing');
+        }
+    }, [isCheckmate, isStalemate, isInCheck]);
+
+    // Add function to calculate valid moves (updated to use legal moves)
+    const calculateValidMoves = useCallback((row, col) => {
         const moves = [];
         for (let i = 0; i < 8; i++) {
             for (let j = 0; j < 8; j++) {
@@ -202,26 +319,12 @@ const isValidMove = useCallback((from, toRow, toCol) => {
             }
         }
         return moves;
-    };
+    }, [isValidMove, board]);
 
-    // Add computer move logic
+    // Add computer move logic (updated to use legal moves)
     const makeComputerMove = useCallback(() => {
         if (currentPlayer === 'black' && isComputerMode) {
-            // Simple AI: Find all possible moves for black pieces
-            let allPossibleMoves = [];
-            for (let row = 0; row < 8; row++) {
-                for (let col = 0; col < 8; col++) {
-                    if (board[row][col]?.color === 'black') {
-                        const moves = calculateValidMoves(row, col);
-                        moves.forEach(move => {
-                            allPossibleMoves.push({
-                                from: { row, col },
-                                to: move
-                            });
-                        });
-                    }
-                }
-            }
+            const allPossibleMoves = getAllLegalMoves(board, 'black');
 
             // Randomly select a move
             if (allPossibleMoves.length > 0) {
@@ -230,36 +333,41 @@ const isValidMove = useCallback((from, toRow, toCol) => {
                 ];
                 
                 // Execute the move
-                const newBoard = board.map(row => [...row]);
-                newBoard[randomMove.to.row][randomMove.to.col] = 
-                    newBoard[randomMove.from.row][randomMove.from.col];
-                newBoard[randomMove.from.row][randomMove.from.col] = null;
+                const newBoard = simulateMove(board, randomMove.from, randomMove.to);
                 setBoard(newBoard);
                 setCurrentPlayer('white');
+                
+                // Update game status for the next player
+                updateGameStatus(newBoard, 'white');
             }
         }
-    }, [board, currentPlayer, isComputerMode, calculateValidMoves]);
+    }, [board, currentPlayer, isComputerMode, getAllLegalMoves, simulateMove, updateGameStatus]);
 
     // Add effect for computer moves
     useEffect(() => {
         if (isComputerMode && currentPlayer === 'black') {
-            const timer = setTimeout(makeComputerMove, 500); // 500ms delay for natural feel
+            const timer = setTimeout(makeComputerMove, 500);
             return () => clearTimeout(timer);
         }
     }, [currentPlayer, isComputerMode, makeComputerMove]);
 
-    // Modify handleSquareClick to work with computer mode
-    const handleSquareClick = (row, col) => {
+    // Modify handleSquareClick to work with computer mode and update game status
+    const handleSquareClick = useCallback((row, col) => {
+        // Don't allow moves if game is over
+        if (gameStatus === 'checkmate' || gameStatus === 'stalemate') return;
+        
         // Only allow white moves in computer mode
         if (isComputerMode && currentPlayer === 'black') return;
 
         if (selectedPiece) {
             if (isValidMove(selectedPiece, row, col)) {
-                const newBoard = board.map(row => [...row]);
-                newBoard[row][col] = newBoard[selectedPiece.row][selectedPiece.col];
-                newBoard[selectedPiece.row][selectedPiece.col] = null;
+                const newBoard = simulateMove(board, selectedPiece, { row, col });
                 setBoard(newBoard);
-                setCurrentPlayer(currentPlayer === 'white' ? 'black' : 'white');
+                const nextPlayer = currentPlayer === 'white' ? 'black' : 'white';
+                setCurrentPlayer(nextPlayer);
+                
+                // Update game status for the next player
+                updateGameStatus(newBoard, nextPlayer);
             }
             setSelectedPiece(null);
             setValidMoves([]);
@@ -267,75 +375,92 @@ const isValidMove = useCallback((from, toRow, toCol) => {
             setSelectedPiece({ row, col });
             setValidMoves(calculateValidMoves(row, col));
         }
+    }, [gameStatus, isComputerMode, currentPlayer, selectedPiece, isValidMove, simulateMove, board, updateGameStatus, calculateValidMoves]);
+
+    // Function to get status message
+    const getStatusMessage = () => {
+        switch (gameStatus) {
+            case 'check':
+                return `${currentPlayer === 'white' ? 'White' : 'Black'} is in check!`;
+            case 'checkmate':
+                return `Checkmate! ${currentPlayer === 'white' ? 'Black' : 'White'} wins!`;
+            case 'stalemate':
+                return 'Stalemate! The game is a draw.';
+            default:
+                return `Current player: ${currentPlayer}`;
+        }
     };
 
-    const handleRotationChange = (e) => {
-        const newRotation = Number(e.target.value);
-    };
-
-    // Add mode switch handler
-    const toggleGameMode = () => {
-        setIsComputerMode(!isComputerMode);
-        // Reset the game when switching modes
+    // Reset game function
+    const resetGame = () => {
         setBoard(initializeBoard());
         setSelectedPiece(null);
-        setValidMoves([]);
         setCurrentPlayer('white');
+        setValidMoves([]);
+        setGameStatus('playing');
     };
 
-    // Update square rendering in the return statement
+    const isValidSquare = (row, col) => {
+        return validMoves.some(move => move.row === row && move.col === col);
+    };
+
+    // Debug logging
+    console.log('ChessBoard rendering, board:', board);
+
     return (
         <div className="chess-game">
+            <div className="game-status">
+                <h2>{getStatusMessage()}</h2>
+                {(gameStatus === 'checkmate' || gameStatus === 'stalemate') && (
+                    <button onClick={resetGame} className="reset-button">
+                        New Game
+                    </button>
+                )}
+            </div>
+            
             <div className="game-controls">
-                <button 
-                    className="mode-switch"
-                    onClick={toggleGameMode}
-                >
-                    {isComputerMode ? 'Switch to Two Players' : 'Switch to Computer Mode'}
-                </button>
-                <div className="status">
-                    Current Player: {currentPlayer}
-                    {isComputerMode && <span> ({currentPlayer === 'white' ? 'Your turn' : 'Computer thinking...'})</span>}
-                </div>
+                <label>
+                    <input
+                        type="checkbox"
+                        checked={isComputerMode}
+                        onChange={(e) => setIsComputerMode(e.target.checked)}
+                        disabled={gameStatus === 'checkmate' || gameStatus === 'stalemate'}
+                    />
+                    Play against computer
+                </label>
             </div>
-            <div className="chess-board">
-                {board.map((row, rowIndex) => (
-                    <div key={rowIndex} className="board-row">
-                        {row.map((square, colIndex) => {
-                            const isValidMove = validMoves.find(
-                                move => move.row === rowIndex && move.col === colIndex
-                            );
-                            const classes = [
-                                'square',
-                                (rowIndex + colIndex) % 2 === 0 ? 'white' : 'black',
-                                selectedPiece && selectedPiece.row === rowIndex &&
-                                    selectedPiece.col === colIndex ? 'selected' : '',
-                                isValidMove ? (isValidMove.isCapture ? 'valid-capture' : 'valid-move') : ''
-                            ].filter(Boolean).join(' ');
 
-                            return (
-                                <div
-                                    key={`${rowIndex}-${colIndex}`}
-                                    className={classes}
-                                    onClick={() => handleSquareClick(rowIndex, colIndex)}
-                                >
-                                    {square && <ChessPiece piece={square.piece} color={square.color} />}
-                                </div>
-                            );
-                        })}
-                    </div>
-                ))}
+            <div className="chess-board">
+                {board.map((row, rowIndex) =>
+                    row.map((square, colIndex) => (
+                        <div
+                            key={`${rowIndex}-${colIndex}`}
+                            className={`chess-square ${
+                                (rowIndex + colIndex) % 2 === 0 ? 'light' : 'dark'
+                            } ${
+                                selectedPiece &&
+                                selectedPiece.row === rowIndex &&
+                                selectedPiece.col === colIndex
+                                    ? 'selected'
+                                    : ''
+                            } ${
+                                isValidSquare(rowIndex, colIndex) ? 'valid-move' : ''
+                            }`}
+                            onClick={() => handleSquareClick(rowIndex, colIndex)}
+                        >
+                            {square && (
+                                <ChessPiece
+                                    piece={square.piece}
+                                    color={square.color}
+                                />
+                            )}
+                            {isValidSquare(rowIndex, colIndex) && (
+                                <div className="move-indicator" />
+                            )}
+                        </div>
+                    ))
+                )}
             </div>
-            {/* <div className="rotation-controls">
-                <input
-                    type="range"
-                    min="0"
-                    max="360"
-                    value={rotation}
-                    onChange={handleRotationChange}
-                />
-                <span className="rotation-value">{rotation}°</span>
-            </div> */}
         </div>
     );
 };
