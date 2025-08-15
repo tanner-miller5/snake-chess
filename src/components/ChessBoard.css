@@ -1,78 +1,266 @@
+.chess-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    padding: 20px;
+}
+
+.chess-timer-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+}
+
+.timer-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.time-control-buttons {
+    display: flex;
+    gap: 5px;
+}
+
+.time-control-buttons button {
+    padding: 8px 12px;
+    border: 2px solid #ddd;
+    background: white;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.time-control-buttons button:hover {
+    background: #f0f0f0;
+}
+
+.time-control-buttons button.active {
+    background: #4CAF50;
+    color: white;
+    border-color: #4CAF50;
+}
+
+.timer-action-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.timer-action-buttons button {
+    padding: 8px 16px;
+    border: 1px solid #ddd;
+    background: white;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.timer-action-buttons button:hover:not(:disabled) {
+    background: #f0f0f0;
+}
+
+.timer-action-buttons button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.chess-timers {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+}
+
+.timer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 15px 20px;
+    border: 3px solid #ddd;
+    border-radius: 8px;
+    background: white;
+    min-width: 120px;
+    transition: all 0.3s;
+}
+
+.timer.active {
+    border-color: #4CAF50;
+    box-shadow: 0 0 10px rgba(76, 175, 80, 0.3);
+    background: #f8fff8;
+}
+
+.timer.low-time {
+    border-color: #f44336;
+    background: #fff8f8;
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0% { box-shadow: 0 0 5px rgba(244, 67, 54, 0.3); }
+    50% { box-shadow: 0 0 15px rgba(244, 67, 54, 0.6); }
+    100% { box-shadow: 0 0 5px rgba(244, 67, 54, 0.3); }
+}
+
+.timer-label {
+    font-size: 14px;
+    font-weight: bold;
+    color: #666;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.timer-time {
+    font-size: 24px;
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+    color: #333;
+}
+
+.timer.active .timer-time {
+    color: #4CAF50;
+}
+
+.timer.low-time .timer-time {
+    color: #f44336;
+}
+
 .chess-game {
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 20px;
-    font-family: Arial, sans-serif;
-    background-color: #f5f5f5;
-    min-height: 100vh;
+    gap: 15px;
 }
 
 .game-status {
-    margin-bottom: 20px;
-    text-align: center;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    max-width: 600px;
+    padding: 10px;
+    background: #f5f5f5;
+    border-radius: 6px;
 }
 
-.game-status h2 {
-    margin: 10px 0;
-    color: #333;
-    font-size: 1.5rem;
+.status-info {
+    flex: 1;
 }
 
-.reset-button {
-    padding: 10px 20px;
-    background-color: #4CAF50;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
+.status {
+    font-weight: bold;
     font-size: 16px;
-    margin-top: 10px;
-    transition: background-color 0.3s;
 }
 
-.reset-button:hover {
-    background-color: #45a049;
+.status.checkmate {
+    color: #d32f2f;
+}
+
+.status.stalemate {
+    color: #ff9800;
+}
+
+.status.check {
+    color: #f44336;
+}
+
+.status.timeout {
+    color: #d32f2f;
+}
+
+.status.waiting {
+    color: #666;
+}
+
+.status.playing {
+    color: #4CAF50;
 }
 
 .game-controls {
-    margin-bottom: 20px;
-    text-align: center;
+    display: flex;
+    gap: 10px;
 }
 
-.game-controls label {
+.game-controls button {
+    padding: 8px 16px;
+    border: 1px solid #ddd;
+    background: white;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.game-controls button:hover {
+    background: #f0f0f0;
+}
+
+/* Increased chess board and piece sizes */
+.chess-board {
+    display: grid;
+    grid-template-columns: repeat(8, 80px); /* Increased from 60px to 80px */
+    grid-template-rows: repeat(8, 80px);    /* Increased from 60px to 80px */
+    gap: 0;
+    border: 2px solid #333;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.square {
     display: flex;
     align-items: center;
-    gap: 8px;
-    cursor: pointer;
-    font-size: 16px;
     justify-content: center;
-    margin-bottom: 10px;
+    position: relative;
+    cursor: pointer;
+    transition: all 0.2s;
 }
 
-.castling-info {
-    margin-top: 10px;
-    padding: 8px 12px;
-    background-color: rgba(255, 255, 255, 0.8);
-    border-radius: 5px;
-    border: 1px solid #ddd;
+.square.light {
+    background-color: #f0d9b5;
 }
 
-.castling-info small {
-    font-family: 'Courier New', monospace;
-    font-size: 12px;
-    color: #666;
-    font-weight: bold;
+.square.dark {
+    background-color: #b58863;
 }
 
-/* Pawn Promotion Modal Styles */
+.square.selected {
+    background-color: #7dd3fc !important;
+    box-shadow: inset 0 0 0 3px #0ea5e9;
+}
+
+.square.valid-move {
+    background-color: rgba(34, 197, 94, 0.3) !important;
+}
+
+.move-indicator {
+    position: absolute;
+    width: 25px;    /* Increased from 20px */
+    height: 25px;   /* Increased from 20px */
+    border-radius: 50%;
+    background-color: rgba(34, 197, 94, 0.6);
+    pointer-events: none;
+}
+
+/* Chess piece styling - increase font size for Unicode pieces */
+.chess-piece {
+    font-size: 56px;   /* Increased from default, adjust as needed */
+    line-height: 1;
+    user-select: none;
+    pointer-events: none;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+}
+
 .promotion-modal {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgba(0, 0, 0, 0.7);
+    background-color: rgba(0, 0, 0, 0.8);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -80,240 +268,33 @@
 }
 
 .promotion-content {
-    background-color: white;
+    background: white;
     padding: 30px;
-    border-radius: 15px;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
     text-align: center;
-    max-width: 500px;
-    width: 90%;
-}
-
-.promotion-content h3 {
-    margin: 0 0 10px 0;
-    color: #333;
-    font-size: 1.8rem;
-}
-
-.promotion-content p {
-    margin: 0 0 20px 0;
-    color: #666;
-    font-size: 1.1rem;
 }
 
 .promotion-pieces {
     display: flex;
-    justify-content: center;
     gap: 15px;
-    flex-wrap: wrap;
+    margin-top: 20px;
 }
 
-.promotion-button {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 15px 10px;
-    background-color: #f9f9f9;
+.promotion-piece {
+    padding: 15px;
     border: 2px solid #ddd;
-    border-radius: 10px;
+    background: white;
     cursor: pointer;
-    transition: all 0.3s ease;
-    min-width: 80px;
-    font-size: 14px;
-    font-weight: bold;
-    color: #333;
+    border-radius: 4px;
+    transition: all 0.2s;
 }
 
-.promotion-button:hover {
-    background-color: #e8f5e8;
+.promotion-piece:hover {
     border-color: #4CAF50;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    transform: scale(1.05);
 }
 
-.promotion-button:active {
-    transform: translateY(0);
-}
-
-.promotion-button .chess-piece {
-    font-size: 40px;
-    margin-bottom: 5px;
-    height: auto;
-    width: auto;
-}
-
-.chess-board {
-    display: grid;
-    grid-template-columns: repeat(8, 70px);
-    grid-template-rows: repeat(8, 70px);
-    border: 3px solid #8b4513;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    background-color: #333;
-    gap: 0;
-}
-
-.chess-square {
-    width: 70px;
-    height: 70px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    box-sizing: border-box;
-}
-
-.chess-square.light {
-    background-color: #f0d9b5;
-}
-
-.chess-square.dark {
-    background-color: #b58863;
-}
-
-.chess-square:hover {
-    opacity: 0.8;
-    transform: scale(1.02);
-}
-
-.chess-square.selected {
-    background-color: #ffd700 !important;
-    box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
-}
-
-.chess-square.valid-move {
-    background-color: #90EE90 !important;
-    box-shadow: inset 0 0 5px rgba(0,128,0,0.5);
-}
-
-.chess-piece {
-    font-size: 48px;
-    line-height: 1;
-    pointer-events: none;
-    user-select: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-    text-align: center;
-}
-
-.chess-piece.white {
-    color: #ffffff;
-    text-shadow: 2px 2px 2px #000000;
-}
-
-.chess-piece.black {
-    color: #000000;
-    text-shadow: 1px 1px 1px #ffffff;
-}
-
-.move-indicator {
-    position: absolute;
-    width: 24px;
-    height: 24px;
-    background-color: rgba(0, 255, 0, 0.7);
-    border-radius: 50%;
-    pointer-events: none;
-    border: 2px solid rgba(0, 128, 0, 0.8);
-}
-
-/* Special indicator for castling moves */
-.chess-square.valid-move.castling {
-    background-color: #FFD700 !important;
-    box-shadow: inset 0 0 8px rgba(255, 215, 0, 0.8);
-}
-
-/* Responsive design */
-@media (max-width: 768px) {
-    .promotion-pieces {
-        gap: 10px;
-    }
-    
-    .promotion-button {
-        min-width: 70px;
-        padding: 12px 8px;
-    }
-    
-    .promotion-button .chess-piece {
-        font-size: 32px;
-    }
-    
-    .castling-info {
-        margin-top: 8px;
-        padding: 6px 8px;
-    }
-    
-    .castling-info small {
-        font-size: 11px;
-    }
-    
-    .chess-board {
-        grid-template-columns: repeat(8, 50px);
-        grid-template-rows: repeat(8, 50px);
-    }
-    
-    .chess-square {
-        width: 50px;
-        height: 50px;
-    }
-    
-    .chess-piece {
-        font-size: 32px;
-    }
-    
-    .move-indicator {
-        width: 18px;
-        height: 18px;
-    }
-}
-
-@media (max-width: 480px) {
-    .promotion-content {
-        padding: 20px;
-    }
-    
-    .promotion-pieces {
-        gap: 8px;
-    }
-    
-    .promotion-button {
-        min-width: 60px;
-        padding: 10px 6px;
-        font-size: 12px;
-    }
-    
-    .promotion-button .chess-piece {
-        font-size: 28px;
-    }
-    
-    .castling-info {
-        margin-top: 6px;
-        padding: 4px 6px;
-    }
-    
-    .castling-info small {
-        font-size: 10px;
-    }
-    
-    .chess-board {
-        grid-template-columns: repeat(8, 40px);
-        grid-template-rows: repeat(8, 40px);
-    }
-    
-    .chess-square {
-        width: 40px;
-        height: 40px;
-    }
-    
-    .chess-piece {
-        font-size: 24px;
-    }
-    
-    .move-indicator {
-        width: 14px;
-        height: 14px;
-    }
+/* Ensure promotion pieces are also larger */
+.promotion-piece .chess-piece {
+    font-size: 48px;   /* Slightly smaller than board pieces */
 }

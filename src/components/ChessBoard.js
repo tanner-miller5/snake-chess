@@ -16,10 +16,89 @@ const ChessBoard = () => {
     });
     const [moveHistory, setMoveHistory] = useState([]); // Track moves for castling rights
 
+    // Timer states
+    const [timeControl, setTimeControl] = useState({ minutes: 10, increment: 0 }); // Default 10 minutes
+    const [timeLeft, setTimeLeft] = useState({
+        white: 10 * 60 * 1000, // 10 minutes in milliseconds
+        black: 10 * 60 * 1000
+    });
+    const [isTimerActive, setIsTimerActive] = useState(false);
+    const [gameStarted, setGameStarted] = useState(false);
+
+    // Timer effect
+    useEffect(() => {
+        let intervalId;
+
+        if (isTimerActive && (gameStatus === 'playing' || gameStatus === 'check') && gameStarted) {
+            intervalId = setInterval(() => {
+                setTimeLeft(prev => {
+                    const newTime = { ...prev };
+                    newTime[currentPlayer] = Math.max(0, newTime[currentPlayer] - 1000);
+
+                    // Check for time out
+                    if (newTime[currentPlayer] === 0) {
+                        setGameStatus('timeout');
+                        setIsTimerActive(false);
+                    }
+
+                    return newTime;
+                });
+            }, 1000);
+        }
+
+        return () => {
+            if (intervalId) {
+                clearInterval(intervalId);
+            }
+        };
+    }, [isTimerActive, currentPlayer, gameStatus, gameStarted]);
+
+    // Format time for display
+    const formatTime = (milliseconds) => {
+        const totalSeconds = Math.floor(milliseconds / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    };
+
+    // Start the game and timer
+    const startGame = () => {
+        setGameStarted(true);
+        setIsTimerActive(true);
+        setGameStatus('playing');
+    };
+
+    // Pause/Resume timer
+    const toggleTimer = () => {
+        if (gameStarted) {
+            setIsTimerActive(prev => !prev);
+        }
+    };
+
+    // Reset timer
+    const resetTimer = () => {
+        setTimeLeft({
+            white: timeControl.minutes * 60 * 1000,
+            black: timeControl.minutes * 60 * 1000
+        });
+        setIsTimerActive(false);
+        setGameStarted(false);
+        setGameStatus('playing');
+    };
+
+    // Update time control settings
+    const updateTimeControl = (minutes, increment = 0) => {
+        setTimeControl({ minutes, increment });
+        setTimeLeft({
+            white: minutes * 60 * 1000,
+            black: minutes * 60 * 1000
+        });
+    };
+
     function initializeBoard() {
         const initialBoard = Array(8).fill(null).map(() => Array(8).fill(null));
         const backRow = ['rook', 'knight', 'bishop', 'queen', 'king', 'bishop', 'knight', 'rook'];
-        
+
         // Set up black pieces
         for (let i = 0; i < 8; i++) {
             initialBoard[0][i] = { piece: backRow[i], color: 'black' };
@@ -49,10 +128,19 @@ const ChessBoard = () => {
         newBoard[row][col] = { piece: promotionPiece, color: promotionState.color };
         setBoard(newBoard);
         setPromotionState(null);
-        
+
         // Switch to next player and update game status
         const nextPlayer = currentPlayer === 'white' ? 'black' : 'white';
         setCurrentPlayer(nextPlayer);
+
+        // Add increment time if applicable
+        if (timeControl.increment > 0) {
+            setTimeLeft(prev => ({
+                ...prev,
+                [currentPlayer]: prev[currentPlayer] + (timeControl.increment * 1000)
+            }));
+        }
+
         updateGameStatus(newBoard, nextPlayer);
     };
 
@@ -144,71 +232,71 @@ const ChessBoard = () => {
     const isValidMoveBasic = (from, toRow, toCol, gameBoard) => {
         const piece = gameBoard[from.row][from.col];
         if (!piece) return false;
-        
+
         if (gameBoard[toRow][toCol] && gameBoard[toRow][toCol].color === piece.color) {
             return false;
         }
-        
+
         const rowDiff = Math.abs(toRow - from.row);
         const directColDiff = Math.abs(toCol - from.col);
         const wrappedColDiff = 8 - directColDiff;
         const colDiff = Math.min(directColDiff, wrappedColDiff);
-        
+
         switch (piece.piece) {
             case 'pawn': {
                 const direction = piece.color === 'white' ? -1 : 1;
                 const startRow = piece.color === 'white' ? 6 : 1;
-                
+
                 // Normal forward move (1 square)
                 if (toCol === from.col && toRow === from.row + direction && !gameBoard[toRow][toCol]) {
                     return true;
                 }
-                
+
                 // Initial two-square move
-                if (from.row === startRow && toCol === from.col && 
-                    toRow === from.row + (2 * direction) && 
-                    !gameBoard[from.row + direction][from.col] && 
+                if (from.row === startRow && toCol === from.col &&
+                    toRow === from.row + (2 * direction) &&
+                    !gameBoard[from.row + direction][from.col] &&
                     !gameBoard[toRow][toCol]) {
                     return true;
                 }
-                
+
                 // Capture moves (including wrapping)
                 if (toRow === from.row + direction && colDiff === 1 && gameBoard[toRow][toCol]) {
                     return true;
                 }
-                
+
                 return false;
             }
-            
+
             case 'rook': {
                 if (rowDiff === 0 || directColDiff === 0) {
                     return checkRookPath(gameBoard, from.row, from.col, toRow, toCol);
                 }
                 return false;
             }
-            
+
             case 'knight': {
                 return (rowDiff === 2 && colDiff === 1) || (rowDiff === 1 && colDiff === 2);
             }
-            
+
             case 'bishop': {
                 if (rowDiff === 0 || rowDiff > 7) return false;
-                
+
                 return (rowDiff === directColDiff || rowDiff === wrappedColDiff) &&
                     (checkDiagonalPath(gameBoard, from.row, from.col, toRow, toCol,
-                           toRow > from.row ? 1 : -1, 1)
+                            toRow > from.row ? 1 : -1, 1)
                         ||
                         checkDiagonalPath(gameBoard, from.row, from.col, toRow, toCol,
                             toRow > from.row ? 1 : -1, -1)
                     );
             }
-            
+
             case 'queen': {
                 const isDiagonal = rowDiff === directColDiff || rowDiff === wrappedColDiff;
                 const isStraight = rowDiff === 0 || directColDiff === 0;
-                
+
                 if (rowDiff > 7) return false;
-                
+
                 if (isStraight) {
                     return checkRookPath(gameBoard, from.row, from.col, toRow, toCol);
                 }
@@ -222,12 +310,12 @@ const ChessBoard = () => {
                 }
                 return false;
             }
-            
+
             case 'king': {
                 // Only regular king moves (no castling in basic validation)
                 return rowDiff <= 1 && colDiff <= 1;
             }
-            
+
             default:
                 return false;
         }
@@ -252,7 +340,7 @@ const ChessBoard = () => {
     const isInCheck = (gameBoard, color) => {
         const king = findKing(gameBoard, color);
         if (!king) return false;
-        
+
         const opponentColor = color === 'white' ? 'black' : 'white';
         return isSquareUnderAttack(gameBoard, king.row, king.col, opponentColor);
     };
@@ -261,46 +349,46 @@ const ChessBoard = () => {
     const canCastle = (color, side, gameBoard, currentCastlingRights) => {
         const row = color === 'white' ? 7 : 0;
         const rights = currentCastlingRights[color];
-        
+
         // Check if castling rights are still available
         if (rights.kingMoved || (side === 'kingside' && !rights.kingside) || (side === 'queenside' && !rights.queenside)) {
             return false;
         }
-        
+
         // Check if king is in check
         if (isInCheck(gameBoard, color)) {
             return false;
         }
-        
+
         // Define positions for castling
         const kingCol = 4;
         const rookCol = side === 'kingside' ? 7 : 0;
-        
+
         // Check if king and rook are in their starting positions
         const king = gameBoard[row][kingCol];
         const rook = gameBoard[row][rookCol];
-        
+
         if (!king || king.piece !== 'king' || king.color !== color) return false;
         if (!rook || rook.piece !== 'rook' || rook.color !== color) return false;
-        
+
         // Check if path is clear between king and rook
         const startCol = Math.min(kingCol, rookCol);
         const endCol = Math.max(kingCol, rookCol);
-        
+
         for (let col = startCol + 1; col < endCol; col++) {
             if (gameBoard[row][col] !== null) return false;
         }
-        
+
         // Check if king doesn't pass through or end up in check
         const opponentColor = color === 'white' ? 'black' : 'white';
         const colsToCheck = side === 'kingside' ? [kingCol, kingCol + 1, kingCol + 2] : [kingCol, kingCol - 1, kingCol - 2];
-        
+
         for (const col of colsToCheck) {
             if (isSquareUnderAttack(gameBoard, row, col, opponentColor)) {
                 return false;
             }
         }
-        
+
         return true;
     };
 
@@ -308,20 +396,20 @@ const ChessBoard = () => {
     const executeCastle = (gameBoard, color, side) => {
         const newBoard = gameBoard.map(row => [...row]);
         const row = color === 'white' ? 7 : 0;
-        
+
         const kingCol = 4;
         const rookCol = side === 'kingside' ? 7 : 0;
         const kingDestCol = side === 'kingside' ? 6 : 2;
         const rookDestCol = side === 'kingside' ? 5 : 3;
-        
+
         // Move king
         newBoard[row][kingDestCol] = newBoard[row][kingCol];
         newBoard[row][kingCol] = null;
-        
+
         // Move rook
         newBoard[row][rookDestCol] = newBoard[row][rookCol];
         newBoard[row][rookCol] = null;
-        
+
         return newBoard;
     };
 
@@ -329,56 +417,56 @@ const ChessBoard = () => {
     const isValidMoveExtended = (from, toRow, toCol, gameBoard, currentCastlingRights) => {
         const piece = gameBoard[from.row][from.col];
         if (!piece) return false;
-        
+
         if (gameBoard[toRow][toCol] && gameBoard[toRow][toCol].color === piece.color) {
             return false;
         }
-        
+
         const rowDiff = Math.abs(toRow - from.row);
         const directColDiff = Math.abs(toCol - from.col);
         const wrappedColDiff = 8 - directColDiff;
         const colDiff = Math.min(directColDiff, wrappedColDiff);
-        
+
         switch (piece.piece) {
             case 'pawn': {
                 const direction = piece.color === 'white' ? -1 : 1;
                 const startRow = piece.color === 'white' ? 6 : 1;
-                
+
                 // Normal forward move (1 square)
                 if (toCol === from.col && toRow === from.row + direction && !gameBoard[toRow][toCol]) {
                     return true;
                 }
-                
+
                 // Initial two-square move
-                if (from.row === startRow && toCol === from.col && 
-                    toRow === from.row + (2 * direction) && 
-                    !gameBoard[from.row + direction][from.col] && 
+                if (from.row === startRow && toCol === from.col &&
+                    toRow === from.row + (2 * direction) &&
+                    !gameBoard[from.row + direction][from.col] &&
                     !gameBoard[toRow][toCol]) {
                     return true;
                 }
-                
+
                 // Capture moves (including wrapping)
                 if (toRow === from.row + direction && colDiff === 1 && gameBoard[toRow][toCol]) {
                     return true;
                 }
-                
+
                 return false;
             }
-            
+
             case 'rook': {
                 if (rowDiff === 0 || directColDiff === 0) {
                     return checkRookPath(gameBoard, from.row, from.col, toRow, toCol);
                 }
                 return false;
             }
-            
+
             case 'knight': {
                 return (rowDiff === 2 && colDiff === 1) || (rowDiff === 1 && colDiff === 2);
             }
-            
+
             case 'bishop': {
                 if (rowDiff === 0 || rowDiff > 7) return false;
-                
+
                 return (rowDiff === directColDiff || rowDiff === wrappedColDiff) &&
                     (checkDiagonalPath(gameBoard, from.row, from.col, toRow, toCol,
                             toRow > from.row ? 1 : -1, 1)
@@ -387,13 +475,13 @@ const ChessBoard = () => {
                             toRow > from.row ? 1 : -1, -1)
                     );
             }
-            
+
             case 'queen': {
                 const isDiagonal = rowDiff === directColDiff || rowDiff === wrappedColDiff;
                 const isStraight = rowDiff === 0 || directColDiff === 0;
-                
+
                 if (rowDiff > 7) return false;
-                
+
                 if (isStraight) {
                     return checkRookPath(gameBoard, from.row, from.col, toRow, toCol);
                 }
@@ -407,22 +495,22 @@ const ChessBoard = () => {
                 }
                 return false;
             }
-            
+
             case 'king': {
                 // Regular king move (one square)
                 if (rowDiff <= 1 && colDiff <= 1) {
                     return true;
                 }
-                
+
                 // Castling move (two squares horizontally)
                 if (rowDiff === 0 && directColDiff === 2) {
                     const side = toCol > from.col ? 'kingside' : 'queenside';
                     return canCastle(piece.color, side, gameBoard, currentCastlingRights);
                 }
-                
+
                 return false;
             }
-            
+
             default:
                 return false;
         }
@@ -444,7 +532,7 @@ const ChessBoard = () => {
     // Function to get all possible legal moves for a color
     const getAllLegalMoves = (gameBoard, color, currentCastlingRights) => {
         const legalMoves = [];
-        
+
         for (let row = 0; row < 8; row++) {
             for (let col = 0; col < 8; col++) {
                 const piece = gameBoard[row][col];
@@ -455,7 +543,7 @@ const ChessBoard = () => {
                                 // Check if this is a castling move
                                 const isCastling = piece.piece === 'king' && Math.abs(toCol - col) === 2;
                                 const castlingSide = isCastling ? (toCol > col ? 'kingside' : 'queenside') : null;
-                                
+
                                 // Check if this move would leave the king in check
                                 const testBoard = simulateMove(gameBoard, { row, col }, { row: toRow, col: toCol }, isCastling, castlingSide);
                                 if (!isInCheck(testBoard, color)) {
@@ -473,7 +561,7 @@ const ChessBoard = () => {
                 }
             }
         }
-        
+
         return legalMoves;
     };
 
@@ -482,7 +570,7 @@ const ChessBoard = () => {
         setCastlingRights(prev => {
             const newRights = { ...prev };
             const color = piece.color;
-            
+
             // If king moves, lose all castling rights for that color
             if (piece.piece === 'king') {
                 newRights[color] = {
@@ -491,7 +579,7 @@ const ChessBoard = () => {
                     kingMoved: true
                 };
             }
-            
+
             // If rook moves from starting position, lose castling rights for that side
             if (piece.piece === 'rook') {
                 const startRow = color === 'white' ? 7 : 0;
@@ -503,7 +591,7 @@ const ChessBoard = () => {
                     }
                 }
             }
-            
+
             // If a rook is captured, remove castling rights for that side
             const capturedPiece = board[to.row][to.col];
             if (capturedPiece && capturedPiece.piece === 'rook') {
@@ -517,176 +605,202 @@ const ChessBoard = () => {
                     }
                 }
             }
-            
+
             return newRights;
         });
     }, [board]);
 
-    // Updated isValidMove that considers check and castling
+    // Updated isValidMove that considers check and castling - FIXED VERSION
     const isValidMove = useCallback((from, toRow, toCol) => {
         const piece = board[from.row][from.col];
         if (!piece || piece.color !== currentPlayer) return false;
-        
-        // First check if the basic move is valid
+
+        // First check if the basic move is valid according to piece movement rules
         if (!isValidMoveExtended(from, toRow, toCol, board, castlingRights)) return false;
-        
+
         // Check if this is a castling move
         const isCastling = piece.piece === 'king' && Math.abs(toCol - from.col) === 2;
         const castlingSide = isCastling ? (toCol > from.col ? 'kingside' : 'queenside') : null;
-        
-        // Then check if this move would leave the king in check
+
+        // Simulate the move to check if it leaves the king in check
         const testBoard = simulateMove(board, from, { row: toRow, col: toCol }, isCastling, castlingSide);
+
+        // The move is valid if it doesn't leave our king in check
         return !isInCheck(testBoard, currentPlayer);
     }, [board, currentPlayer, castlingRights]);
 
-    // Function to check if the current player is in checkmate
-    const isCheckmate = (gameBoard, color) => {
-        if (!isInCheck(gameBoard, color)) return false;
-        
-        const legalMoves = getAllLegalMoves(gameBoard, color, castlingRights);
-        return legalMoves.length === 0;
-    };
+    // Computer move logic (simplified)
+    const makeComputerMove = useCallback(() => {
+        if (currentPlayer === 'black' && isComputerMode && (gameStatus === 'playing' || gameStatus === 'check')) {
+            const legalMoves = getAllLegalMoves(board, 'black', castlingRights);
 
-    // Function to check if the current player is in stalemate
-    const isStalemate = (gameBoard, color) => {
-        if (isInCheck(gameBoard, color)) return false;
-        
-        const legalMoves = getAllLegalMoves(gameBoard, color, castlingRights);
-        return legalMoves.length === 0;
-    };
+            if (legalMoves.length === 0) {
+                // No legal moves available
+                const inCheck = isInCheck(board, 'black');
+                setGameStatus(inCheck ? 'checkmate' : 'stalemate');
+                setIsTimerActive(false);
+                return;
+            }
 
-    // Function to update game status
-    const updateGameStatus = useCallback((gameBoard, color) => {
-        if (isCheckmate(gameBoard, color)) {
-            setGameStatus('checkmate');
-        } else if (isStalemate(gameBoard, color)) {
-            setGameStatus('stalemate');
-        } else if (isInCheck(gameBoard, color)) {
+            // Simple random move selection (can be improved with better AI)
+            const randomMove = legalMoves[Math.floor(Math.random() * legalMoves.length)];
+
+            setTimeout(() => {
+                makeMove(randomMove.from, randomMove.to);
+            }, 1000);
+        }
+    }, [currentPlayer, isComputerMode, gameStatus, board, castlingRights]);
+
+    // Updated makeMove function to include timer logic
+    const makeMove = useCallback((from, to) => {
+        if (!isValidMove(from, to.row, to.col)) return false;
+
+        const piece = board[from.row][from.col];
+        if (!piece || piece.color !== currentPlayer) return false;
+
+        // Check if this is a castling move
+        const isCastling = piece.piece === 'king' && Math.abs(to.col - from.col) === 2;
+        const castlingSide = isCastling ? (to.col > from.col ? 'kingside' : 'queenside') : null;
+
+        let newBoard;
+        if (isCastling && castlingSide) {
+            newBoard = executeCastle(board, piece.color, castlingSide);
+        } else {
+            newBoard = board.map(row => [...row]);
+            newBoard[to.row][to.col] = newBoard[from.row][from.col];
+            newBoard[from.row][from.col] = null;
+        }
+
+        // Handle pawn promotion
+        if (isPawnPromotion(piece, from.row, to.row)) {
+            if (currentPlayer === 'white') {
+                setPromotionState({ row: to.row, col: to.col, color: piece.color });
+            } else {
+                // Computer auto-promotes to queen
+                newBoard = handleComputerPromotion(newBoard, to.row, to.col, piece.color);
+            }
+        }
+
+        // Update castling rights
+        updateCastlingRights(from, to, piece);
+
+        // Add move to history
+        setMoveHistory(prev => [...prev, { from, to, piece, timestamp: Date.now() }]);
+
+        setBoard(newBoard);
+        setSelectedPiece(null);
+        setValidMoves([]);
+
+        // Switch players and add increment time
+        const nextPlayer = currentPlayer === 'white' ? 'black' : 'white';
+        if (!promotionState) {
+            setCurrentPlayer(nextPlayer);
+
+            // Add increment time if applicable
+            if (timeControl.increment > 0 && gameStarted) {
+                setTimeLeft(prev => ({
+                    ...prev,
+                    [currentPlayer]: prev[currentPlayer] + (timeControl.increment * 1000)
+                }));
+            }
+        }
+
+        // Update game status
+        if (!promotionState) {
+            updateGameStatus(newBoard, nextPlayer);
+        }
+
+        return true;
+    }, [board, currentPlayer, isValidMove, updateCastlingRights, promotionState, timeControl.increment, gameStarted]);
+
+    // Update game status (check, checkmate, stalemate)
+    const updateGameStatus = useCallback((gameBoard, player) => {
+        const legalMoves = getAllLegalMoves(gameBoard, player, castlingRights);
+        const inCheck = isInCheck(gameBoard, player);
+
+        if (legalMoves.length === 0) {
+            if (inCheck) {
+                setGameStatus('checkmate');
+                setIsTimerActive(false);
+            } else {
+                setGameStatus('stalemate');
+                setIsTimerActive(false);
+            }
+        } else if (inCheck) {
             setGameStatus('check');
         } else {
             setGameStatus('playing');
         }
     }, [castlingRights]);
 
-    // Add function to calculate valid moves (updated to use legal moves)
-    const calculateValidMoves = useCallback((row, col) => {
+    // Get valid moves for a piece - FIXED VERSION
+    const getValidMovesForPiece = useCallback((row, col) => {
         const moves = [];
-        for (let i = 0; i < 8; i++) {
-            for (let j = 0; j < 8; j++) {
-                if (isValidMove({ row, col }, i, j)) {
-                    moves.push({
-                        row: i,
-                        col: j,
-                        isCapture: board[i][j] !== null
-                    });
+        const piece = board[row][col];
+
+        if (!piece || piece.color !== currentPlayer) {
+            return moves;
+        }
+
+        for (let toRow = 0; toRow < 8; toRow++) {
+            for (let toCol = 0; toCol < 8; toCol++) {
+                if (isValidMove({ row, col }, toRow, toCol)) {
+                    moves.push({ row: toRow, col: toCol });
                 }
             }
         }
+
         return moves;
-    }, [isValidMove, board]);
+    }, [board, currentPlayer, isValidMove]);
 
-    // Updated computer move logic with pawn promotion and castling
-    const makeComputerMove = useCallback(() => {
-        if (currentPlayer === 'black' && isComputerMode) {
-            const allPossibleMoves = getAllLegalMoves(board, 'black', castlingRights);
-
-            // Randomly select a move
-            if (allPossibleMoves.length > 0) {
-                const randomMove = allPossibleMoves[
-                    Math.floor(Math.random() * allPossibleMoves.length)
-                ];
-                
-                // Execute the move
-                let newBoard = simulateMove(board, randomMove.from, randomMove.to, randomMove.isCastling, randomMove.castlingSide);
-                
-                // Update castling rights
-                const movedPiece = board[randomMove.from.row][randomMove.from.col];
-                updateCastlingRights(randomMove.from, randomMove.to, movedPiece);
-                
-                // Check for pawn promotion
-                if (isPawnPromotion(movedPiece, randomMove.from.row, randomMove.to.row)) {
-                    newBoard = handleComputerPromotion(newBoard, randomMove.to.row, randomMove.to.col, 'black');
-                }
-                
-                setBoard(newBoard);
-                setCurrentPlayer('white');
-                
-                // Update game status for the next player
-                updateGameStatus(newBoard, 'white');
-            }
-        }
-    }, [board, currentPlayer, isComputerMode, castlingRights, updateCastlingRights, updateGameStatus]);
-
-    // Add effect for computer moves
-    useEffect(() => {
-        if (isComputerMode && currentPlayer === 'black' && !promotionState) {
-            const timer = setTimeout(makeComputerMove, 500);
-            return () => clearTimeout(timer);
-        }
-    }, [currentPlayer, isComputerMode, makeComputerMove, promotionState]);
-
-    // Updated handleSquareClick with pawn promotion and castling
+    // Handle square click
     const handleSquareClick = useCallback((row, col) => {
-        // Don't allow moves if game is over or if promotion is in progress
-        if (gameStatus === 'checkmate' || gameStatus === 'stalemate' || promotionState) return;
-        
-        // Only allow white moves in computer mode
-        if (isComputerMode && currentPlayer === 'black') return;
+        if ((gameStatus !== 'playing' && gameStatus !== 'check') || (isComputerMode && currentPlayer === 'black')) return;
 
-        if (selectedPiece) {
-            if (isValidMove(selectedPiece, row, col)) {
-                const piece = board[selectedPiece.row][selectedPiece.col];
-                
-                // Check if this is a castling move
-                const isCastling = piece.piece === 'king' && Math.abs(col - selectedPiece.col) === 2;
-                const castlingSide = isCastling ? (col > selectedPiece.col ? 'kingside' : 'queenside') : null;
-                
-                // Execute the move
-                let newBoard = simulateMove(board, selectedPiece, { row, col }, isCastling, castlingSide);
-                
-                // Update castling rights
-                updateCastlingRights(selectedPiece, { row, col }, piece);
-                
-                // Check for pawn promotion
-                if (isPawnPromotion(piece, selectedPiece.row, row)) {
-                    setBoard(newBoard);
-                    setPromotionState({ row, col, color: piece.color });
-                } else {
-                    setBoard(newBoard);
-                    const nextPlayer = currentPlayer === 'white' ? 'black' : 'white';
-                    setCurrentPlayer(nextPlayer);
-                    
-                    // Update game status for the next player
-                    updateGameStatus(newBoard, nextPlayer);
-                }
+        // If no piece is selected
+        if (!selectedPiece) {
+            const piece = board[row][col];
+            if (piece && piece.color === currentPlayer) {
+                setSelectedPiece({ row, col });
+                setValidMoves(getValidMovesForPiece(row, col));
             }
+            return;
+        }
+
+        // If clicking on the same piece, deselect it
+        if (selectedPiece.row === row && selectedPiece.col === col) {
             setSelectedPiece(null);
             setValidMoves([]);
-        } else if (board[row][col] && board[row][col].color === currentPlayer) {
+            return;
+        }
+
+        // If clicking on another piece of the same color, select it
+        const clickedPiece = board[row][col];
+        if (clickedPiece && clickedPiece.color === currentPlayer) {
             setSelectedPiece({ row, col });
-            setValidMoves(calculateValidMoves(row, col));
+            setValidMoves(getValidMovesForPiece(row, col));
+            return;
         }
-    }, [gameStatus, promotionState, isComputerMode, currentPlayer, selectedPiece, isValidMove, board, updateGameStatus, calculateValidMoves, updateCastlingRights]);
 
-    // Function to get status message
-    const getStatusMessage = () => {
-        if (promotionState) {
-            return `Choose a piece to promote your pawn!`;
+        // Try to make a move
+        if (makeMove(selectedPiece, { row, col })) {
+            // Move successful
+            if (!gameStarted) {
+                startGame();
+            }
+        } else {
+            // Invalid move, keep selection
+            console.log('Invalid move');
         }
-        switch (gameStatus) {
-            case 'check':
-                return `${currentPlayer === 'white' ? 'White' : 'Black'} is in check!`;
-            case 'checkmate':
-                return `Checkmate! ${currentPlayer === 'white' ? 'Black' : 'White'} wins!`;
-            case 'stalemate':
-                return 'Stalemate! The game is a draw.';
-            default:
-                return `Current player: ${currentPlayer}`;
-        }
-    };
+    }, [board, selectedPiece, currentPlayer, gameStatus, isComputerMode, getValidMovesForPiece, makeMove, gameStarted]);
 
-    // Reset game function
-    const resetGame = () => {
+    // Effect for computer moves
+    useEffect(() => {
+        makeComputerMove();
+    }, [makeComputerMove]);
+
+    // New game function
+    const startNewGame = () => {
         setBoard(initializeBoard());
         setSelectedPiece(null);
         setCurrentPlayer('white');
@@ -698,116 +812,140 @@ const ChessBoard = () => {
             black: { kingside: true, queenside: true, kingMoved: false }
         });
         setMoveHistory([]);
+        resetTimer();
     };
-
-    const isValidSquare = (row, col) => {
-        return validMoves.some(move => move.row === row && move.col === col);
-    };
-
-    // Debug logging
-    console.log('ChessBoard rendering, board:', board);
 
     return (
-        <div className="chess-game">
-            <div className="game-status">
-                <h2>{getStatusMessage()}</h2>
-                {(gameStatus === 'checkmate' || gameStatus === 'stalemate') && (
-                    <button onClick={resetGame} className="reset-button">
-                        New Game
-                    </button>
-                )}
-            </div>
-            
-            <div className="game-controls">
-                <label>
-                    <input
-                        type="checkbox"
-                        checked={isComputerMode}
-                        onChange={(e) => setIsComputerMode(e.target.checked)}
-                        disabled={gameStatus === 'checkmate' || gameStatus === 'stalemate'}
-                    />
-                    Play against computer
-                </label>
-                
-                {/* Display castling rights for debugging
-                <div className="castling-info">
-                    <small>
-                        White: K{castlingRights.white.kingside ? '✓' : '✗'} Q{castlingRights.white.queenside ? '✓' : '✗'} | 
-                        Black: K{castlingRights.black.kingside ? '✓' : '✗'} Q{castlingRights.black.queenside ? '✓' : '✗'}
-                    </small>
-                </div>
-                */}
-            </div>
-
-            {/* Pawn Promotion Modal */}
-            {promotionState && (
-                <div className="promotion-modal">
-                    <div className="promotion-content">
-                        <h3>Promote your pawn!</h3>
-                        <p>Choose which piece to promote to:</p>
-                        <div className="promotion-pieces">
-                            <button
-                                className="promotion-button"
-                                onClick={() => handlePawnPromotion(promotionState.row, promotionState.col, 'queen')}
-                            >
-                                <ChessPiece piece="queen" color={promotionState.color} />
-                                Queen
-                            </button>
-                            <button
-                                className="promotion-button"
-                                onClick={() => handlePawnPromotion(promotionState.row, promotionState.col, 'rook')}
-                            >
-                                <ChessPiece piece="rook" color={promotionState.color} />
-                                Rook
-                            </button>
-                            <button
-                                className="promotion-button"
-                                onClick={() => handlePawnPromotion(promotionState.row, promotionState.col, 'bishop')}
-                            >
-                                <ChessPiece piece="bishop" color={promotionState.color} />
-                                Bishop
-                            </button>
-                            <button
-                                className="promotion-button"
-                                onClick={() => handlePawnPromotion(promotionState.row, promotionState.col, 'knight')}
-                            >
-                                <ChessPiece piece="knight" color={promotionState.color} />
-                                Knight
-                            </button>
-                        </div>
+        <div className="chess-container">
+            <div className="chess-timer-container">
+                {/* Timer Controls */}
+                <div className="timer-controls">
+                    <div className="time-control-buttons">
+                        <button onClick={() => updateTimeControl(1)} className={timeControl.minutes === 1 ? 'active' : ''}>
+                            1 min
+                        </button>
+                        <button onClick={() => updateTimeControl(3)} className={timeControl.minutes === 3 ? 'active' : ''}>
+                            3 min
+                        </button>
+                        <button onClick={() => updateTimeControl(5)} className={timeControl.minutes === 5 ? 'active' : ''}>
+                            5 min
+                        </button>
+                        <button onClick={() => updateTimeControl(10)} className={timeControl.minutes === 10 ? 'active' : ''}>
+                            10 min
+                        </button>
+                        <button onClick={() => updateTimeControl(15)} className={timeControl.minutes === 15 ? 'active' : ''}>
+                            15 min
+                        </button>
+                    </div>
+                    <div className="timer-action-buttons">
+                        <button onClick={startGame} disabled={gameStarted && isTimerActive}>
+                            Start
+                        </button>
+                        <button onClick={toggleTimer} disabled={!gameStarted}>
+                            {isTimerActive ? 'Pause' : 'Resume'}
+                        </button>
+                        <button onClick={resetTimer}>
+                            Reset
+                        </button>
                     </div>
                 </div>
-            )}
 
-            <div className="chess-board">
-                {board.map((row, rowIndex) =>
-                    row.map((square, colIndex) => (
-                        <div
-                            key={`${rowIndex}-${colIndex}`}
-                            className={`chess-square ${
-                                (rowIndex + colIndex) % 2 === 0 ? 'light' : 'dark'
-                            } ${
-                                selectedPiece &&
-                                selectedPiece.row === rowIndex &&
-                                selectedPiece.col === colIndex
-                                    ? 'selected'
-                                    : ''
-                            } ${
-                                isValidSquare(rowIndex, colIndex) ? 'valid-move' : ''
-                            }`}
-                            onClick={() => handleSquareClick(rowIndex, colIndex)}
-                        >
-                            {square && (
-                                <ChessPiece
-                                    piece={square.piece}
-                                    color={square.color}
-                                />
-                            )}
-                            {isValidSquare(rowIndex, colIndex) && (
-                                <div className="move-indicator" />
-                            )}
+                {/* Timers */}
+                <div className="chess-timers">
+                    <div className={`timer ${currentPlayer === 'black' && isTimerActive ? 'active' : ''} ${timeLeft.black <= 30000 ? 'low-time' : ''}`}>
+                        <div className="timer-label">Black</div>
+                        <div className="timer-time">{formatTime(timeLeft.black)}</div>
+                    </div>
+                    <div className={`timer ${currentPlayer === 'white' && isTimerActive ? 'active' : ''} ${timeLeft.white <= 30000 ? 'low-time' : ''}`}>
+                        <div className="timer-label">White</div>
+                        <div className="timer-time">{formatTime(timeLeft.white)}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="chess-game">
+                {/* Game status */}
+                <div className="game-status">
+                    <div className="status-info">
+                        {gameStatus === 'checkmate' && (
+                            <span className="status checkmate">
+                                Checkmate! {currentPlayer === 'white' ? 'Black' : 'White'} wins!
+                            </span>
+                        )}
+                        {gameStatus === 'stalemate' && (
+                            <span className="status stalemate">Stalemate! It's a draw.</span>
+                        )}
+                        {gameStatus === 'check' && (
+                            <span className="status check">Check!</span>
+                        )}
+                        {gameStatus === 'timeout' && (
+                            <span className="status timeout">
+                                Time out! {currentPlayer === 'white' ? 'Black' : 'White'} wins!
+                            </span>
+                        )}
+                        {gameStatus === 'playing' && !gameStarted && (
+                            <span className="status waiting">Click Start or make a move to begin</span>
+                        )}
+                        {gameStatus === 'playing' && gameStarted && (
+                            <span className="status playing">
+                                {currentPlayer === 'white' ? 'White' : 'Black'} to move
+                            </span>
+                        )}
+                    </div>
+
+                    <div className="game-controls">
+                        <button onClick={() => setIsComputerMode(!isComputerMode)}>
+                            {isComputerMode ? 'vs Computer' : 'vs Human'}
+                        </button>
+                        <button onClick={startNewGame}>New Game</button>
+                    </div>
+                </div>
+
+                {/* Chess board */}
+                <div className="chess-board">
+                    {board.map((row, rowIndex) =>
+                        row.map((square, colIndex) => {
+                            const isSelected = selectedPiece && selectedPiece.row === rowIndex && selectedPiece.col === colIndex;
+                            const isValidMove = validMoves.some(move => move.row === rowIndex && move.col === colIndex);
+                            const isLight = (rowIndex + colIndex) % 2 === 0;
+
+                            return (
+                                <div
+                                    key={`${rowIndex}-${colIndex}`}
+                                    className={`square ${isLight ? 'light' : 'dark'} ${isSelected ? 'selected' : ''} ${isValidMove ? 'valid-move' : ''}`}
+                                    onClick={() => handleSquareClick(rowIndex, colIndex)}
+                                >
+                                    {square && (
+                                        <ChessPiece
+                                            piece={square.piece}
+                                            color={square.color}
+                                        />
+                                    )}
+                                    {isValidMove && <div className="move-indicator" />}
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
+
+                {/* Pawn promotion modal */}
+                {promotionState && (
+                    <div className="promotion-modal">
+                        <div className="promotion-content">
+                            <h3>Promote your pawn:</h3>
+                            <div className="promotion-pieces">
+                                {['queen', 'rook', 'bishop', 'knight'].map(piece => (
+                                    <button
+                                        key={piece}
+                                        onClick={() => handlePawnPromotion(promotionState.row, promotionState.col, piece)}
+                                        className="promotion-piece"
+                                    >
+                                        <ChessPiece piece={piece} color={promotionState.color} />
+                                    </button>
+                                ))}
+                            </div>
                         </div>
-                    ))
+                    </div>
                 )}
             </div>
         </div>
