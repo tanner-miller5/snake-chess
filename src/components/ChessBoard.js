@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import './ChessBoard.css';
 import ChessPiece from './ChessPiece';
@@ -15,6 +16,7 @@ const ChessBoard = () => {
         black: { kingside: true, queenside: true, kingMoved: false }
     });
     const [moveHistory, setMoveHistory] = useState([]); // Track moves for castling rights
+    const [enPassantTarget, setEnPassantTarget] = useState(null); // Track en passant target square
 
     // Timer states
     const [timeControl, setTimeControl] = useState({ minutes: 10, increment: 0 }); // Default 10 minutes
@@ -150,6 +152,25 @@ const ChessBoard = () => {
         return newBoard;
     };
 
+    // Check if en passant is possible
+    const canEnPassant = (from, toRow, toCol) => {
+        const piece = board[from.row][from.col];
+        if (!piece || piece.piece !== 'pawn') return false;
+
+        // Must have an en passant target
+        if (!enPassantTarget) return false;
+
+        // Must be moving to the en passant target square
+        if (toRow !== enPassantTarget.row || toCol !== enPassantTarget.col) return false;
+
+        const direction = piece.color === 'white' ? -1 : 1;
+        const captureRow = piece.color === 'white' ? 3 : 4; // Row where the capturing pawn must be
+        const targetRow = captureRow + direction; // Row where the target square must be
+
+        // Check if we're on the correct rank and moving to the correct target
+        return from.row === captureRow && toRow === targetRow;
+    };
+
     // Helper functions without useCallback to avoid circular dependencies
     const findKing = (gameBoard, color) => {
         for (let row = 0; row < 8; row++) {
@@ -228,8 +249,8 @@ const ChessBoard = () => {
         return currentRow === toRow && currentCol === toCol;
     };
 
-    // Function to check if a move is valid (basic version without castling)
-    const isValidMoveBasic = (from, toRow, toCol, gameBoard) => {
+    // Function to check if a move is valid (basic version without castling or en passant)
+    const isValidMoveBasic = (from, toRow, toCol, gameBoard, currentEnPassantTarget = null) => {
         const piece = gameBoard[from.row][from.col];
         if (!piece) return false;
 
@@ -260,8 +281,17 @@ const ChessBoard = () => {
                     return true;
                 }
 
-                // Capture moves (including wrapping)
+                // Regular capture moves (including wrapping)
                 if (toRow === from.row + direction && colDiff === 1 && gameBoard[toRow][toCol]) {
+                    return true;
+                }
+
+                // En passant capture
+                if (currentEnPassantTarget &&
+                    toRow === currentEnPassantTarget.row &&
+                    toCol === currentEnPassantTarget.col &&
+                    toRow === from.row + direction &&
+                    colDiff === 1) {
                     return true;
                 }
 
@@ -322,12 +352,12 @@ const ChessBoard = () => {
     };
 
     // Function to check if a square is under attack by the opponent
-    const isSquareUnderAttack = (gameBoard, targetRow, targetCol, attackingColor) => {
+    const isSquareUnderAttack = (gameBoard, targetRow, targetCol, attackingColor, currentEnPassantTarget = null) => {
         for (let row = 0; row < 8; row++) {
             for (let col = 0; col < 8; col++) {
                 const piece = gameBoard[row][col];
                 if (piece && piece.color === attackingColor) {
-                    if (isValidMoveBasic({ row, col }, targetRow, targetCol, gameBoard)) {
+                    if (isValidMoveBasic({ row, col }, targetRow, targetCol, gameBoard, currentEnPassantTarget)) {
                         return true;
                     }
                 }
@@ -413,8 +443,23 @@ const ChessBoard = () => {
         return newBoard;
     };
 
-    // Extended move validation that includes castling
-    const isValidMoveExtended = (from, toRow, toCol, gameBoard, currentCastlingRights) => {
+    // Function to execute en passant move
+    const executeEnPassant = (gameBoard, from, to) => {
+        const newBoard = gameBoard.map(row => [...row]);
+        const piece = gameBoard[from.row][from.col];
+
+        // Move the pawn to the target square
+        newBoard[to.row][to.col] = piece;
+        newBoard[from.row][from.col] = null;
+
+        // Remove the captured pawn (it's on the same row as the moving pawn)
+        newBoard[from.row][to.col] = null;
+
+        return newBoard;
+    };
+
+    // Extended move validation that includes castling and en passant
+    const isValidMoveExtended = (from, toRow, toCol, gameBoard, currentCastlingRights, currentEnPassantTarget = null) => {
         const piece = gameBoard[from.row][from.col];
         if (!piece) return false;
 
@@ -445,8 +490,17 @@ const ChessBoard = () => {
                     return true;
                 }
 
-                // Capture moves (including wrapping)
+                // Regular capture moves (including wrapping)
                 if (toRow === from.row + direction && colDiff === 1 && gameBoard[toRow][toCol]) {
+                    return true;
+                }
+
+                // En passant capture
+                if (currentEnPassantTarget &&
+                    toRow === currentEnPassantTarget.row &&
+                    toCol === currentEnPassantTarget.col &&
+                    toRow === from.row + direction &&
+                    colDiff === 1) {
                     return true;
                 }
 
@@ -517,10 +571,12 @@ const ChessBoard = () => {
     };
 
     // Function to simulate a move and return the resulting board
-    const simulateMove = (gameBoard, from, to, isCastling = false, castlingSide = null) => {
+    const simulateMove = (gameBoard, from, to, isCastling = false, castlingSide = null, isEnPassant = false) => {
         if (isCastling && castlingSide) {
             const piece = gameBoard[from.row][from.col];
             return executeCastle(gameBoard, piece.color, castlingSide);
+        } else if (isEnPassant) {
+            return executeEnPassant(gameBoard, from, to);
         } else {
             const newBoard = gameBoard.map(row => [...row]);
             newBoard[to.row][to.col] = newBoard[from.row][from.col];
@@ -530,7 +586,7 @@ const ChessBoard = () => {
     };
 
     // Function to get all possible legal moves for a color
-    const getAllLegalMoves = (gameBoard, color, currentCastlingRights) => {
+    const getAllLegalMoves = (gameBoard, color, currentCastlingRights, currentEnPassantTarget = null) => {
         const legalMoves = [];
 
         for (let row = 0; row < 8; row++) {
@@ -539,20 +595,27 @@ const ChessBoard = () => {
                 if (piece && piece.color === color) {
                     for (let toRow = 0; toRow < 8; toRow++) {
                         for (let toCol = 0; toCol < 8; toCol++) {
-                            if (isValidMoveExtended({ row, col }, toRow, toCol, gameBoard, currentCastlingRights)) {
+                            if (isValidMoveExtended({ row, col }, toRow, toCol, gameBoard, currentCastlingRights, currentEnPassantTarget)) {
                                 // Check if this is a castling move
                                 const isCastling = piece.piece === 'king' && Math.abs(toCol - col) === 2;
                                 const castlingSide = isCastling ? (toCol > col ? 'kingside' : 'queenside') : null;
 
+                                // Check if this is an en passant move
+                                const isEnPassant = piece.piece === 'pawn' &&
+                                    currentEnPassantTarget &&
+                                    toRow === currentEnPassantTarget.row &&
+                                    toCol === currentEnPassantTarget.col;
+
                                 // Check if this move would leave the king in check
-                                const testBoard = simulateMove(gameBoard, { row, col }, { row: toRow, col: toCol }, isCastling, castlingSide);
+                                const testBoard = simulateMove(gameBoard, { row, col }, { row: toRow, col: toCol }, isCastling, castlingSide, isEnPassant);
                                 if (!isInCheck(testBoard, color)) {
                                     legalMoves.push({
                                         from: { row, col },
                                         to: { row: toRow, col: toCol },
-                                        isCapture: gameBoard[toRow][toCol] !== null,
+                                        isCapture: gameBoard[toRow][toCol] !== null || isEnPassant,
                                         isCastling,
-                                        castlingSide
+                                        castlingSide,
+                                        isEnPassant
                                     });
                                 }
                             }
@@ -610,29 +673,35 @@ const ChessBoard = () => {
         });
     }, [board]);
 
-    // Updated isValidMove that considers check and castling - FIXED VERSION
+    // Updated isValidMove that considers check, castling, and en passant
     const isValidMove = useCallback((from, toRow, toCol) => {
         const piece = board[from.row][from.col];
         if (!piece || piece.color !== currentPlayer) return false;
 
         // First check if the basic move is valid according to piece movement rules
-        if (!isValidMoveExtended(from, toRow, toCol, board, castlingRights)) return false;
+        if (!isValidMoveExtended(from, toRow, toCol, board, castlingRights, enPassantTarget)) return false;
 
         // Check if this is a castling move
         const isCastling = piece.piece === 'king' && Math.abs(toCol - from.col) === 2;
         const castlingSide = isCastling ? (toCol > from.col ? 'kingside' : 'queenside') : null;
 
+        // Check if this is an en passant move
+        const isEnPassant = piece.piece === 'pawn' &&
+            enPassantTarget &&
+            toRow === enPassantTarget.row &&
+            toCol === enPassantTarget.col;
+
         // Simulate the move to check if it leaves the king in check
-        const testBoard = simulateMove(board, from, { row: toRow, col: toCol }, isCastling, castlingSide);
+        const testBoard = simulateMove(board, from, { row: toRow, col: toCol }, isCastling, castlingSide, isEnPassant);
 
         // The move is valid if it doesn't leave our king in check
         return !isInCheck(testBoard, currentPlayer);
-    }, [board, currentPlayer, castlingRights]);
+    }, [board, currentPlayer, castlingRights, enPassantTarget]);
 
     // Computer move logic (simplified)
     const makeComputerMove = useCallback(() => {
         if (currentPlayer === 'black' && isComputerMode && (gameStatus === 'playing' || gameStatus === 'check')) {
-            const legalMoves = getAllLegalMoves(board, 'black', castlingRights);
+            const legalMoves = getAllLegalMoves(board, 'black', castlingRights, enPassantTarget);
 
             if (legalMoves.length === 0) {
                 // No legal moves available
@@ -649,9 +718,9 @@ const ChessBoard = () => {
                 makeMove(randomMove.from, randomMove.to);
             }, 1000);
         }
-    }, [currentPlayer, isComputerMode, gameStatus, board, castlingRights]);
+    }, [currentPlayer, isComputerMode, gameStatus, board, castlingRights, enPassantTarget]);
 
-    // Updated makeMove function to include timer logic
+    // Updated makeMove function to include timer logic and en passant
     const makeMove = useCallback((from, to) => {
         if (!isValidMove(from, to.row, to.col)) return false;
 
@@ -662,9 +731,17 @@ const ChessBoard = () => {
         const isCastling = piece.piece === 'king' && Math.abs(to.col - from.col) === 2;
         const castlingSide = isCastling ? (to.col > from.col ? 'kingside' : 'queenside') : null;
 
+        // Check if this is an en passant move
+        const isEnPassant = piece.piece === 'pawn' &&
+            enPassantTarget &&
+            to.row === enPassantTarget.row &&
+            to.col === enPassantTarget.col;
+
         let newBoard;
         if (isCastling && castlingSide) {
             newBoard = executeCastle(board, piece.color, castlingSide);
+        } else if (isEnPassant) {
+            newBoard = executeEnPassant(board, from, to);
         } else {
             newBoard = board.map(row => [...row]);
             newBoard[to.row][to.col] = newBoard[from.row][from.col];
@@ -681,11 +758,21 @@ const ChessBoard = () => {
             }
         }
 
+        // Update en passant target
+        if (piece.piece === 'pawn' && Math.abs(to.row - from.row) === 2) {
+            // Pawn moved two squares, set en passant target
+            const targetRow = (from.row + to.row) / 2;
+            setEnPassantTarget({ row: targetRow, col: from.col });
+        } else {
+            // Clear en passant target
+            setEnPassantTarget(null);
+        }
+
         // Update castling rights
         updateCastlingRights(from, to, piece);
 
         // Add move to history
-        setMoveHistory(prev => [...prev, { from, to, piece, timestamp: Date.now() }]);
+        setMoveHistory(prev => [...prev, { from, to, piece, timestamp: Date.now(), isEnPassant }]);
 
         setBoard(newBoard);
         setSelectedPiece(null);
@@ -711,11 +798,11 @@ const ChessBoard = () => {
         }
 
         return true;
-    }, [board, currentPlayer, isValidMove, updateCastlingRights, promotionState, timeControl.increment, gameStarted]);
+    }, [board, currentPlayer, isValidMove, updateCastlingRights, promotionState, timeControl.increment, gameStarted, enPassantTarget]);
 
     // Update game status (check, checkmate, stalemate)
     const updateGameStatus = useCallback((gameBoard, player) => {
-        const legalMoves = getAllLegalMoves(gameBoard, player, castlingRights);
+        const legalMoves = getAllLegalMoves(gameBoard, player, castlingRights, enPassantTarget);
         const inCheck = isInCheck(gameBoard, player);
 
         if (legalMoves.length === 0) {
@@ -731,9 +818,9 @@ const ChessBoard = () => {
         } else {
             setGameStatus('playing');
         }
-    }, [castlingRights]);
+    }, [castlingRights, enPassantTarget]);
 
-    // Get valid moves for a piece - FIXED VERSION
+    // Get valid moves for a piece
     const getValidMovesForPiece = useCallback((row, col) => {
         const moves = [];
         const piece = board[row][col];
@@ -812,6 +899,7 @@ const ChessBoard = () => {
             black: { kingside: true, queenside: true, kingMoved: false }
         });
         setMoveHistory([]);
+        setEnPassantTarget(null);
         resetTimer();
     };
 

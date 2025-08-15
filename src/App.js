@@ -5,7 +5,7 @@ import ChessBoard from './components/ChessBoard';
 function App() {
   return (
     <div className="App">
-      <h1>Wrap Around Chess Game</h1>
+      <h1>Cylinder Chess Variant</h1>
       <ChessBoard />
     </div>
   );
