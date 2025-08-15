@@ -10,6 +10,11 @@ const ChessBoard = () => {
     const [isComputerMode, setIsComputerMode] = useState(false);
     const [gameStatus, setGameStatus] = useState('playing'); // 'playing', 'check', 'checkmate', 'stalemate'
     const [promotionState, setPromotionState] = useState(null); // { row, col, color } when promotion is needed
+    const [castlingRights, setCastlingRights] = useState({
+        white: { kingside: true, queenside: true, kingMoved: false },
+        black: { kingside: true, queenside: true, kingMoved: false }
+    });
+    const [moveHistory, setMoveHistory] = useState([]); // Track moves for castling rights
 
     function initializeBoard() {
         const initialBoard = Array(8).fill(null).map(() => Array(8).fill(null));
@@ -57,24 +62,24 @@ const ChessBoard = () => {
         return newBoard;
     };
 
-    // Function to find the king's position for a given color
-    const findKing = useCallback((board, color) => {
+    // Helper functions without useCallback to avoid circular dependencies
+    const findKing = (gameBoard, color) => {
         for (let row = 0; row < 8; row++) {
             for (let col = 0; col < 8; col++) {
-                if (board[row][col]?.piece === 'king' && board[row][col]?.color === color) {
+                if (gameBoard[row][col]?.piece === 'king' && gameBoard[row][col]?.color === color) {
                     return { row, col };
                 }
             }
         }
         return null;
-    }, []);
+    };
 
-    const checkRookPath = useCallback((fromRow, fromCol, toRow, toCol) => {
+    const checkRookPath = (gameBoard, fromRow, fromCol, toRow, toCol) => {
         // Vertical movement
         if (fromCol === toCol) {
             const step = fromRow < toRow ? 1 : -1;
             for (let row = fromRow + step; row !== toRow; row += step) {
-                if (board[row][fromCol] !== null) {
+                if (gameBoard[row][fromCol] !== null) {
                     return false;
                 }
             }
@@ -93,7 +98,7 @@ const ChessBoard = () => {
 
             for (let i = 0; i < directDist - 1; i++) {
                 currentCol = (currentCol + directStep + 8) % 8;
-                if (board[fromRow][currentCol] !== null) {
+                if (gameBoard[fromRow][currentCol] !== null) {
                     isDirectPathClear = false;
                     break;
                 }
@@ -106,7 +111,7 @@ const ChessBoard = () => {
 
             for (let i = 0; i < wrappedDist - 1; i++) {
                 currentCol = (currentCol + wrappedStep + 8) % 8;
-                if (board[fromRow][currentCol] !== null) {
+                if (gameBoard[fromRow][currentCol] !== null) {
                     isWrappedPathClear = false;
                     break;
                 }
@@ -116,9 +121,9 @@ const ChessBoard = () => {
         }
 
         return false;
-    }, [board]);
+    };
 
-    const checkDiagonalPath = useCallback((fromRow, fromCol, toRow, toCol, rowStep, colStep, isWrapped) => {
+    const checkDiagonalPath = (gameBoard, fromRow, fromCol, toRow, toCol, rowStep, colStep, isWrapped) => {
         let currentRow = fromRow;
         let currentCol = fromCol;
         const steps = Math.abs(toRow - fromRow);
@@ -127,17 +132,16 @@ const ChessBoard = () => {
             currentRow += rowStep;
             currentCol = (currentCol + colStep + 8) % 8;
 
-            if (i < steps - 1 && board[currentRow][currentCol] !== null) {
+            if (i < steps - 1 && gameBoard[currentRow][currentCol] !== null) {
                 return false;
             }
         }
 
         return currentRow === toRow && currentCol === toCol;
-    }, [board]);
+    };
 
-    // Function to check if a move is valid (without considering check)
-    const isValidMoveBasic = useCallback((from, toRow, toCol, testBoard = null) => {
-        const gameBoard = testBoard || board;
+    // Function to check if a move is valid (basic version without castling)
+    const isValidMoveBasic = (from, toRow, toCol, gameBoard) => {
         const piece = gameBoard[from.row][from.col];
         if (!piece) return false;
         
@@ -178,7 +182,7 @@ const ChessBoard = () => {
             
             case 'rook': {
                 if (rowDiff === 0 || directColDiff === 0) {
-                    return checkRookPath(from.row, from.col, toRow, toCol);
+                    return checkRookPath(gameBoard, from.row, from.col, toRow, toCol);
                 }
                 return false;
             }
@@ -191,7 +195,7 @@ const ChessBoard = () => {
                 if (rowDiff === 0 || rowDiff > 7) return false;
                 
                 return (rowDiff === directColDiff || rowDiff === wrappedColDiff) && 
-                       checkDiagonalPath(from.row, from.col, toRow, toCol,
+                       checkDiagonalPath(gameBoard, from.row, from.col, toRow, toCol,
                            toRow > from.row ? 1 : -1,
                            rowDiff === directColDiff ? 
                                (toCol > from.col ? 1 : -1) : 
@@ -206,10 +210,10 @@ const ChessBoard = () => {
                 if (rowDiff > 7) return false;
                 
                 if (isStraight) {
-                    return checkRookPath(from.row, from.col, toRow, toCol);
+                    return checkRookPath(gameBoard, from.row, from.col, toRow, toCol);
                 }
                 if (isDiagonal) {
-                    return checkDiagonalPath(from.row, from.col, toRow, toCol,
+                    return checkDiagonalPath(gameBoard, from.row, from.col, toRow, toCol,
                         toRow > from.row ? 1 : -1,
                         rowDiff === directColDiff ? 
                             (toCol > from.col ? 1 : -1) : 
@@ -220,16 +224,17 @@ const ChessBoard = () => {
             }
             
             case 'king': {
+                // Only regular king moves (no castling in basic validation)
                 return rowDiff <= 1 && colDiff <= 1;
             }
             
             default:
                 return false;
         }
-    }, [board, checkRookPath, checkDiagonalPath]);
+    };
 
     // Function to check if a square is under attack by the opponent
-    const isSquareUnderAttack = useCallback((gameBoard, targetRow, targetCol, attackingColor) => {
+    const isSquareUnderAttack = (gameBoard, targetRow, targetCol, attackingColor) => {
         for (let row = 0; row < 8; row++) {
             for (let col = 0; col < 8; col++) {
                 const piece = gameBoard[row][col];
@@ -241,27 +246,203 @@ const ChessBoard = () => {
             }
         }
         return false;
-    }, [isValidMoveBasic]);
+    };
 
     // Function to check if the current player is in check
-    const isInCheck = useCallback((gameBoard, color) => {
+    const isInCheck = (gameBoard, color) => {
         const king = findKing(gameBoard, color);
         if (!king) return false;
         
         const opponentColor = color === 'white' ? 'black' : 'white';
         return isSquareUnderAttack(gameBoard, king.row, king.col, opponentColor);
-    }, [findKing, isSquareUnderAttack]);
+    };
+
+    // Function to check if castling is possible
+    const canCastle = (color, side, gameBoard, currentCastlingRights) => {
+        const row = color === 'white' ? 7 : 0;
+        const rights = currentCastlingRights[color];
+        
+        // Check if castling rights are still available
+        if (rights.kingMoved || (side === 'kingside' && !rights.kingside) || (side === 'queenside' && !rights.queenside)) {
+            return false;
+        }
+        
+        // Check if king is in check
+        if (isInCheck(gameBoard, color)) {
+            return false;
+        }
+        
+        // Define positions for castling
+        const kingCol = 4;
+        const rookCol = side === 'kingside' ? 7 : 0;
+        
+        // Check if king and rook are in their starting positions
+        const king = gameBoard[row][kingCol];
+        const rook = gameBoard[row][rookCol];
+        
+        if (!king || king.piece !== 'king' || king.color !== color) return false;
+        if (!rook || rook.piece !== 'rook' || rook.color !== color) return false;
+        
+        // Check if path is clear between king and rook
+        const startCol = Math.min(kingCol, rookCol);
+        const endCol = Math.max(kingCol, rookCol);
+        
+        for (let col = startCol + 1; col < endCol; col++) {
+            if (gameBoard[row][col] !== null) return false;
+        }
+        
+        // Check if king doesn't pass through or end up in check
+        const opponentColor = color === 'white' ? 'black' : 'white';
+        const colsToCheck = side === 'kingside' ? [kingCol, kingCol + 1, kingCol + 2] : [kingCol, kingCol - 1, kingCol - 2];
+        
+        for (const col of colsToCheck) {
+            if (isSquareUnderAttack(gameBoard, row, col, opponentColor)) {
+                return false;
+            }
+        }
+        
+        return true;
+    };
+
+    // Function to execute castling move
+    const executeCastle = (gameBoard, color, side) => {
+        const newBoard = gameBoard.map(row => [...row]);
+        const row = color === 'white' ? 7 : 0;
+        
+        const kingCol = 4;
+        const rookCol = side === 'kingside' ? 7 : 0;
+        const kingDestCol = side === 'kingside' ? 6 : 2;
+        const rookDestCol = side === 'kingside' ? 5 : 3;
+        
+        // Move king
+        newBoard[row][kingDestCol] = newBoard[row][kingCol];
+        newBoard[row][kingCol] = null;
+        
+        // Move rook
+        newBoard[row][rookDestCol] = newBoard[row][rookCol];
+        newBoard[row][rookCol] = null;
+        
+        return newBoard;
+    };
+
+    // Extended move validation that includes castling
+    const isValidMoveExtended = (from, toRow, toCol, gameBoard, currentCastlingRights) => {
+        const piece = gameBoard[from.row][from.col];
+        if (!piece) return false;
+        
+        if (gameBoard[toRow][toCol] && gameBoard[toRow][toCol].color === piece.color) {
+            return false;
+        }
+        
+        const rowDiff = Math.abs(toRow - from.row);
+        const directColDiff = Math.abs(toCol - from.col);
+        const wrappedColDiff = 8 - directColDiff;
+        const colDiff = Math.min(directColDiff, wrappedColDiff);
+        
+        switch (piece.piece) {
+            case 'pawn': {
+                const direction = piece.color === 'white' ? -1 : 1;
+                const startRow = piece.color === 'white' ? 6 : 1;
+                
+                // Normal forward move (1 square)
+                if (toCol === from.col && toRow === from.row + direction && !gameBoard[toRow][toCol]) {
+                    return true;
+                }
+                
+                // Initial two-square move
+                if (from.row === startRow && toCol === from.col && 
+                    toRow === from.row + (2 * direction) && 
+                    !gameBoard[from.row + direction][from.col] && 
+                    !gameBoard[toRow][toCol]) {
+                    return true;
+                }
+                
+                // Capture moves (including wrapping)
+                if (toRow === from.row + direction && colDiff === 1 && gameBoard[toRow][toCol]) {
+                    return true;
+                }
+                
+                return false;
+            }
+            
+            case 'rook': {
+                if (rowDiff === 0 || directColDiff === 0) {
+                    return checkRookPath(gameBoard, from.row, from.col, toRow, toCol);
+                }
+                return false;
+            }
+            
+            case 'knight': {
+                return (rowDiff === 2 && colDiff === 1) || (rowDiff === 1 && colDiff === 2);
+            }
+            
+            case 'bishop': {
+                if (rowDiff === 0 || rowDiff > 7) return false;
+                
+                return (rowDiff === directColDiff || rowDiff === wrappedColDiff) && 
+                       checkDiagonalPath(gameBoard, from.row, from.col, toRow, toCol,
+                           toRow > from.row ? 1 : -1,
+                           rowDiff === directColDiff ? 
+                               (toCol > from.col ? 1 : -1) : 
+                               (toCol > from.col ? -1 : 1),
+                           rowDiff === wrappedColDiff);
+            }
+            
+            case 'queen': {
+                const isDiagonal = rowDiff === directColDiff || rowDiff === wrappedColDiff;
+                const isStraight = rowDiff === 0 || directColDiff === 0;
+                
+                if (rowDiff > 7) return false;
+                
+                if (isStraight) {
+                    return checkRookPath(gameBoard, from.row, from.col, toRow, toCol);
+                }
+                if (isDiagonal) {
+                    return checkDiagonalPath(gameBoard, from.row, from.col, toRow, toCol,
+                        toRow > from.row ? 1 : -1,
+                        rowDiff === directColDiff ? 
+                            (toCol > from.col ? 1 : -1) : 
+                            (toCol > from.col ? -1 : 1),
+                        rowDiff === wrappedColDiff);
+                }
+                return false;
+            }
+            
+            case 'king': {
+                // Regular king move (one square)
+                if (rowDiff <= 1 && colDiff <= 1) {
+                    return true;
+                }
+                
+                // Castling move (two squares horizontally)
+                if (rowDiff === 0 && directColDiff === 2) {
+                    const side = toCol > from.col ? 'kingside' : 'queenside';
+                    return canCastle(piece.color, side, gameBoard, currentCastlingRights);
+                }
+                
+                return false;
+            }
+            
+            default:
+                return false;
+        }
+    };
 
     // Function to simulate a move and return the resulting board
-    const simulateMove = useCallback((gameBoard, from, to) => {
-        const newBoard = gameBoard.map(row => [...row]);
-        newBoard[to.row][to.col] = newBoard[from.row][from.col];
-        newBoard[from.row][from.col] = null;
-        return newBoard;
-    }, []);
+    const simulateMove = (gameBoard, from, to, isCastling = false, castlingSide = null) => {
+        if (isCastling && castlingSide) {
+            const piece = gameBoard[from.row][from.col];
+            return executeCastle(gameBoard, piece.color, castlingSide);
+        } else {
+            const newBoard = gameBoard.map(row => [...row]);
+            newBoard[to.row][to.col] = newBoard[from.row][from.col];
+            newBoard[from.row][from.col] = null;
+            return newBoard;
+        }
+    };
 
     // Function to get all possible legal moves for a color
-    const getAllLegalMoves = useCallback((gameBoard, color) => {
+    const getAllLegalMoves = (gameBoard, color, currentCastlingRights) => {
         const legalMoves = [];
         
         for (let row = 0; row < 8; row++) {
@@ -270,14 +451,20 @@ const ChessBoard = () => {
                 if (piece && piece.color === color) {
                     for (let toRow = 0; toRow < 8; toRow++) {
                         for (let toCol = 0; toCol < 8; toCol++) {
-                            if (isValidMoveBasic({ row, col }, toRow, toCol, gameBoard)) {
+                            if (isValidMoveExtended({ row, col }, toRow, toCol, gameBoard, currentCastlingRights)) {
+                                // Check if this is a castling move
+                                const isCastling = piece.piece === 'king' && Math.abs(toCol - col) === 2;
+                                const castlingSide = isCastling ? (toCol > col ? 'kingside' : 'queenside') : null;
+                                
                                 // Check if this move would leave the king in check
-                                const testBoard = simulateMove(gameBoard, { row, col }, { row: toRow, col: toCol });
+                                const testBoard = simulateMove(gameBoard, { row, col }, { row: toRow, col: toCol }, isCastling, castlingSide);
                                 if (!isInCheck(testBoard, color)) {
                                     legalMoves.push({
                                         from: { row, col },
                                         to: { row: toRow, col: toCol },
-                                        isCapture: gameBoard[toRow][toCol] !== null
+                                        isCapture: gameBoard[toRow][toCol] !== null,
+                                        isCastling,
+                                        castlingSide
                                     });
                                 }
                             }
@@ -288,36 +475,85 @@ const ChessBoard = () => {
         }
         
         return legalMoves;
-    }, [isValidMoveBasic, simulateMove, isInCheck]);
+    };
 
-    // Function to check if the current player is in checkmate
-    const isCheckmate = useCallback((gameBoard, color) => {
-        if (!isInCheck(gameBoard, color)) return false;
-        
-        const legalMoves = getAllLegalMoves(gameBoard, color);
-        return legalMoves.length === 0;
-    }, [isInCheck, getAllLegalMoves]);
+    // Function to update castling rights after a move
+    const updateCastlingRights = useCallback((from, to, piece) => {
+        setCastlingRights(prev => {
+            const newRights = { ...prev };
+            const color = piece.color;
+            
+            // If king moves, lose all castling rights for that color
+            if (piece.piece === 'king') {
+                newRights[color] = {
+                    kingside: false,
+                    queenside: false,
+                    kingMoved: true
+                };
+            }
+            
+            // If rook moves from starting position, lose castling rights for that side
+            if (piece.piece === 'rook') {
+                const startRow = color === 'white' ? 7 : 0;
+                if (from.row === startRow) {
+                    if (from.col === 0) { // Queenside rook
+                        newRights[color].queenside = false;
+                    } else if (from.col === 7) { // Kingside rook
+                        newRights[color].kingside = false;
+                    }
+                }
+            }
+            
+            // If a rook is captured, remove castling rights for that side
+            const capturedPiece = board[to.row][to.col];
+            if (capturedPiece && capturedPiece.piece === 'rook') {
+                const capturedColor = capturedPiece.color;
+                const startRow = capturedColor === 'white' ? 7 : 0;
+                if (to.row === startRow) {
+                    if (to.col === 0) { // Queenside rook captured
+                        newRights[capturedColor].queenside = false;
+                    } else if (to.col === 7) { // Kingside rook captured
+                        newRights[capturedColor].kingside = false;
+                    }
+                }
+            }
+            
+            return newRights;
+        });
+    }, [board]);
 
-    // Function to check if the current player is in stalemate
-    const isStalemate = useCallback((gameBoard, color) => {
-        if (isInCheck(gameBoard, color)) return false;
-        
-        const legalMoves = getAllLegalMoves(gameBoard, color);
-        return legalMoves.length === 0;
-    }, [isInCheck, getAllLegalMoves]);
-
-    // Updated isValidMove that considers check
+    // Updated isValidMove that considers check and castling
     const isValidMove = useCallback((from, toRow, toCol) => {
         const piece = board[from.row][from.col];
         if (!piece || piece.color !== currentPlayer) return false;
         
         // First check if the basic move is valid
-        if (!isValidMoveBasic(from, toRow, toCol)) return false;
+        if (!isValidMoveExtended(from, toRow, toCol, board, castlingRights)) return false;
+        
+        // Check if this is a castling move
+        const isCastling = piece.piece === 'king' && Math.abs(toCol - from.col) === 2;
+        const castlingSide = isCastling ? (toCol > from.col ? 'kingside' : 'queenside') : null;
         
         // Then check if this move would leave the king in check
-        const testBoard = simulateMove(board, from, { row: toRow, col: toCol });
+        const testBoard = simulateMove(board, from, { row: toRow, col: toCol }, isCastling, castlingSide);
         return !isInCheck(testBoard, currentPlayer);
-    }, [board, currentPlayer, isValidMoveBasic, simulateMove, isInCheck]);
+    }, [board, currentPlayer, castlingRights]);
+
+    // Function to check if the current player is in checkmate
+    const isCheckmate = (gameBoard, color) => {
+        if (!isInCheck(gameBoard, color)) return false;
+        
+        const legalMoves = getAllLegalMoves(gameBoard, color, castlingRights);
+        return legalMoves.length === 0;
+    };
+
+    // Function to check if the current player is in stalemate
+    const isStalemate = (gameBoard, color) => {
+        if (isInCheck(gameBoard, color)) return false;
+        
+        const legalMoves = getAllLegalMoves(gameBoard, color, castlingRights);
+        return legalMoves.length === 0;
+    };
 
     // Function to update game status
     const updateGameStatus = useCallback((gameBoard, color) => {
@@ -330,7 +566,7 @@ const ChessBoard = () => {
         } else {
             setGameStatus('playing');
         }
-    }, [isCheckmate, isStalemate, isInCheck]);
+    }, [castlingRights]);
 
     // Add function to calculate valid moves (updated to use legal moves)
     const calculateValidMoves = useCallback((row, col) => {
@@ -349,10 +585,10 @@ const ChessBoard = () => {
         return moves;
     }, [isValidMove, board]);
 
-    // Updated computer move logic with pawn promotion
+    // Updated computer move logic with pawn promotion and castling
     const makeComputerMove = useCallback(() => {
         if (currentPlayer === 'black' && isComputerMode) {
-            const allPossibleMoves = getAllLegalMoves(board, 'black');
+            const allPossibleMoves = getAllLegalMoves(board, 'black', castlingRights);
 
             // Randomly select a move
             if (allPossibleMoves.length > 0) {
@@ -361,10 +597,13 @@ const ChessBoard = () => {
                 ];
                 
                 // Execute the move
-                let newBoard = simulateMove(board, randomMove.from, randomMove.to);
+                let newBoard = simulateMove(board, randomMove.from, randomMove.to, randomMove.isCastling, randomMove.castlingSide);
+                
+                // Update castling rights
+                const movedPiece = board[randomMove.from.row][randomMove.from.col];
+                updateCastlingRights(randomMove.from, randomMove.to, movedPiece);
                 
                 // Check for pawn promotion
-                const movedPiece = board[randomMove.from.row][randomMove.from.col];
                 if (isPawnPromotion(movedPiece, randomMove.from.row, randomMove.to.row)) {
                     newBoard = handleComputerPromotion(newBoard, randomMove.to.row, randomMove.to.col, 'black');
                 }
@@ -376,7 +615,7 @@ const ChessBoard = () => {
                 updateGameStatus(newBoard, 'white');
             }
         }
-    }, [board, currentPlayer, isComputerMode, getAllLegalMoves, simulateMove, updateGameStatus]);
+    }, [board, currentPlayer, isComputerMode, castlingRights, updateCastlingRights, updateGameStatus]);
 
     // Add effect for computer moves
     useEffect(() => {
@@ -386,7 +625,7 @@ const ChessBoard = () => {
         }
     }, [currentPlayer, isComputerMode, makeComputerMove, promotionState]);
 
-    // Updated handleSquareClick with pawn promotion
+    // Updated handleSquareClick with pawn promotion and castling
     const handleSquareClick = useCallback((row, col) => {
         // Don't allow moves if game is over or if promotion is in progress
         if (gameStatus === 'checkmate' || gameStatus === 'stalemate' || promotionState) return;
@@ -397,7 +636,16 @@ const ChessBoard = () => {
         if (selectedPiece) {
             if (isValidMove(selectedPiece, row, col)) {
                 const piece = board[selectedPiece.row][selectedPiece.col];
-                const newBoard = simulateMove(board, selectedPiece, { row, col });
+                
+                // Check if this is a castling move
+                const isCastling = piece.piece === 'king' && Math.abs(col - selectedPiece.col) === 2;
+                const castlingSide = isCastling ? (col > selectedPiece.col ? 'kingside' : 'queenside') : null;
+                
+                // Execute the move
+                let newBoard = simulateMove(board, selectedPiece, { row, col }, isCastling, castlingSide);
+                
+                // Update castling rights
+                updateCastlingRights(selectedPiece, { row, col }, piece);
                 
                 // Check for pawn promotion
                 if (isPawnPromotion(piece, selectedPiece.row, row)) {
@@ -418,7 +666,7 @@ const ChessBoard = () => {
             setSelectedPiece({ row, col });
             setValidMoves(calculateValidMoves(row, col));
         }
-    }, [gameStatus, promotionState, isComputerMode, currentPlayer, selectedPiece, isValidMove, simulateMove, board, updateGameStatus, calculateValidMoves]);
+    }, [gameStatus, promotionState, isComputerMode, currentPlayer, selectedPiece, isValidMove, board, updateGameStatus, calculateValidMoves, updateCastlingRights]);
 
     // Function to get status message
     const getStatusMessage = () => {
@@ -445,6 +693,11 @@ const ChessBoard = () => {
         setValidMoves([]);
         setGameStatus('playing');
         setPromotionState(null);
+        setCastlingRights({
+            white: { kingside: true, queenside: true, kingMoved: false },
+            black: { kingside: true, queenside: true, kingMoved: false }
+        });
+        setMoveHistory([]);
     };
 
     const isValidSquare = (row, col) => {
@@ -475,6 +728,14 @@ const ChessBoard = () => {
                     />
                     Play against computer
                 </label>
+                
+                {/* Display castling rights for debugging */}
+                <div className="castling-info">
+                    <small>
+                        White: K{castlingRights.white.kingside ? '✓' : '✗'} Q{castlingRights.white.queenside ? '✓' : '✗'} | 
+                        Black: K{castlingRights.black.kingside ? '✓' : '✗'} Q{castlingRights.black.queenside ? '✓' : '✗'}
+                    </small>
+                </div>
             </div>
 
             {/* Pawn Promotion Modal */}
