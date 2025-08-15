@@ -729,13 +729,14 @@ const ChessBoard = () => {
                     Play against computer
                 </label>
                 
-                {/* Display castling rights for debugging */}
+                {/* Display castling rights for debugging
                 <div className="castling-info">
                     <small>
                         White: K{castlingRights.white.kingside ? '✓' : '✗'} Q{castlingRights.white.queenside ? '✓' : '✗'} | 
                         Black: K{castlingRights.black.kingside ? '✓' : '✗'} Q{castlingRights.black.queenside ? '✓' : '✗'}
                     </small>
                 </div>
+                */}
             </div>
 
             {/* Pawn Promotion Modal */}
